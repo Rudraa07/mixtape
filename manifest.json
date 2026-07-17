@@ -1,0 +1,25 @@
+{
+  "name": "Mixtape — Per-Track Repeat & Speed",
+  "short_name": "Mixtape",
+  "description": "A local audio player with per-track repeat sequences, speed control, and cover art.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1a1816",
+  "theme_color": "#1a1816",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
