@@ -110,6 +110,31 @@
   }
   input[type=file]{ display:none; }
 
+  .playlist-io-row{ display:flex; gap:8px; margin-top:8px; }
+  .playlist-io-btn{
+    flex:1; background:transparent; border:1px solid var(--line);
+    border-radius:10px; padding:10px; text-align:center;
+    font-family:'JetBrains Mono', monospace; font-size:11px; letter-spacing:0.5px;
+    color:var(--muted); cursor:pointer;
+  }
+  .playlist-io-btn:active{ background:var(--panel2); }
+
+  .saved-list-item{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:10px 12px; border:1px solid var(--line); border-radius:10px;
+    margin-bottom:8px; cursor:pointer;
+  }
+  .saved-list-item:active{ background:var(--panel2); }
+  .saved-list-name{ font-weight:700; font-size:14px; }
+  .saved-list-meta{
+    font-family:'JetBrains Mono', monospace; font-size:11px; color:var(--muted); margin-top:2px;
+  }
+  .saved-list-delete{
+    background:none; border:none; color:var(--red); cursor:pointer;
+    font-size:15px; padding:4px 6px; flex-shrink:0;
+  }
+  .saved-list-empty{ text-align:center; color:var(--muted); font-size:13px; padding:14px 6px; }
+
   /* ---- Playlist ---- */
   .playlist-label{
     font-family:'JetBrains Mono', monospace; font-size:11px; letter-spacing:2px;
@@ -119,6 +144,19 @@
     display:flex; align-items:center; justify-content:space-between;
   }
   .playlist-header .playlist-label{ margin-bottom:10px; }
+  .playlist-header-actions{ display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+  .loop-toggle-btn{
+    font-family:'JetBrains Mono', monospace; font-size:11px; letter-spacing:0.5px;
+    background:none; border:1px solid var(--line); color:var(--muted);
+    padding:5px 10px; border-radius:8px; cursor:pointer;
+  }
+  .loop-toggle-btn.on{ background:var(--teal); border-color:var(--teal); color:var(--bg); font-weight:700; }
+  .mix-btn{
+    font-family:'JetBrains Mono', monospace; font-size:11px; letter-spacing:0.5px;
+    background:none; border:1px solid var(--line); color:var(--muted);
+    padding:5px 10px; border-radius:8px; cursor:pointer;
+  }
+  .mix-btn:active{ background:var(--amber); border-color:var(--amber); color:var(--bg); }
   .clear-all-btn{
     font-family:'JetBrains Mono', monospace; font-size:11px; letter-spacing:0.5px;
     background:none; border:1px solid var(--line); color:var(--red);
@@ -322,7 +360,6 @@
 </head>
 <body>
 <div class="app">
-  <div class="eyebrow">Side A</div>
   <h1>Mixtape</h1>
 
   <div class="deck">
@@ -392,12 +429,21 @@
     <div class="load-zone">
       <label class="load-btn" for="fileInput">+ Add tracks</label>
       <input type="file" id="fileInput" accept="*/*" multiple>
+      <div class="playlist-io-row">
+        <button class="playlist-io-btn" id="savePlaylistBtn">💾 Save playlist</button>
+        <button class="playlist-io-btn" id="loadPlaylistBtn">📂 Load playlist</button>
+      </div>
     </div>
   </div>
 
   <div class="playlist-header">
     <div class="playlist-label">Tracklist</div>
-    <button class="clear-all-btn" id="clearAllBtn">Clear all</button>
+    <div class="playlist-header-actions">
+      <button class="loop-toggle-btn" id="loopToggleBtn">🔁 Loop</button>
+      <button class="mix-btn" id="mixBtn">🔀 Mix</button>
+      <button class="mix-btn" id="restoreBtn">↺ Restore</button>
+      <button class="clear-all-btn" id="clearAllBtn">Clear all</button>
+    </div>
   </div>
   <div id="playlistItems">
     <div class="empty-state">Your playlist is empty — add some audio files above.</div>
@@ -750,8 +796,10 @@
   fileInput.addEventListener('change', (e)=>{
     const files = Array.from(e.target.files);
     files.forEach(f=>{
+      const seq = idCounter++;
       const newTrack = {
-        id: 't' + (idCounter++),
+        id: 't' + seq,
+        order: seq,
         name: f.name.replace(/\.[^/.]+$/, ''),
         url: URL.createObjectURL(f),
         plays: [{ speed: 1 }],
@@ -760,7 +808,8 @@
         pendingCustomActive: false,
         pendingCustomValue: 2,
         coverUrl: null,
-        skipOnce: false
+        skipOnce: false,
+        originalOrder: idCounter
       };
       tracks.push(newTrack);
       try{ extractCover(f, newTrack); }catch(err){ /* cover extraction failing should never block adding the song */ }
@@ -819,11 +868,21 @@
   });
   audio.addEventListener('loadedmetadata', ()=>{ durTime.textContent = fmtTime(audio.duration); });
 
+  let loopPlaylist = false;
+  try{ loopPlaylist = localStorage.getItem('mixtape-loop-playlist') === 'true'; }catch(e){ /* default off */ }
+
   function nextPlayableIndex(fromIndex){
     let idx = fromIndex + 1;
     while(idx < tracks.length){
       if(tracks[idx].skipOnce){ tracks[idx].skipOnce = false; idx++; continue; }
       return idx;
+    }
+    if(loopPlaylist && tracks.length > 0){
+      idx = 0;
+      while(idx <= fromIndex){
+        if(tracks[idx].skipOnce){ tracks[idx].skipOnce = false; idx++; continue; }
+        return idx;
+      }
     }
     return -1;
   }
@@ -834,8 +893,216 @@
       if(tracks[idx].skipOnce){ tracks[idx].skipOnce = false; idx--; continue; }
       return idx;
     }
+    if(loopPlaylist && tracks.length > 0){
+      idx = tracks.length - 1;
+      while(idx >= fromIndex){
+        if(tracks[idx].skipOnce){ tracks[idx].skipOnce = false; idx--; continue; }
+        return idx;
+      }
+    }
     return -1;
   }
+
+  const loopToggleBtn = document.getElementById('loopToggleBtn');
+  function setLoopPlaylist(on){
+    loopPlaylist = on;
+    loopToggleBtn.classList.toggle('on', on);
+    try{ localStorage.setItem('mixtape-loop-playlist', on ? 'true' : 'false'); }catch(e){ /* preference just won't persist */ }
+  }
+  loopToggleBtn.addEventListener('click', ()=> setLoopPlaylist(!loopPlaylist));
+  setLoopPlaylist(loopPlaylist);
+
+  function shuffleTracks(){
+    if(tracks.length < 2) return;
+    const currentId = currentTrackIndex !== -1 ? tracks[currentTrackIndex].id : null;
+    for(let i = tracks.length - 1; i > 0; i--){
+      const j = Math.floor(Math.random() * (i + 1));
+      [tracks[i], tracks[j]] = [tracks[j], tracks[i]];
+    }
+    if(currentId){
+      currentTrackIndex = tracks.findIndex(t => t.id === currentId);
+    }
+    renderPlaylist();
+  }
+  document.getElementById('mixBtn').addEventListener('click', shuffleTracks);
+
+  function restoreOriginalOrder(){
+    if(tracks.length < 2) return;
+    const currentId = currentTrackIndex !== -1 ? tracks[currentTrackIndex].id : null;
+    tracks.sort((a, b) => a.order - b.order);
+    if(currentId){
+      currentTrackIndex = tracks.findIndex(t => t.id === currentId);
+    }
+    renderPlaylist();
+  }
+  document.getElementById('restoreBtn').addEventListener('click', restoreOriginalOrder);
+
+  // ---- Saved playlists (IndexedDB — stores the actual audio & cover files) ----
+  const DB_NAME = 'mixtapeDB';
+  const STORE_NAME = 'playlists';
+
+  function openDB(){
+    return new Promise((resolve, reject)=>{
+      const req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = (e)=>{
+        const db = e.target.result;
+        if(!db.objectStoreNames.contains(STORE_NAME)){
+          db.createObjectStore(STORE_NAME, { keyPath: 'name' });
+        }
+      };
+      req.onsuccess = ()=> resolve(req.result);
+      req.onerror = ()=> reject(req.error);
+    });
+  }
+
+  async function blobFromUrl(url){
+    const res = await fetch(url);
+    return await res.blob();
+  }
+
+  async function saveCurrentPlaylist(name){
+    const db = await openDB();
+    const trackRecords = [];
+    for(const t of tracks){
+      const audioBlob = await blobFromUrl(t.url);
+      let coverBlob = null, coverDataUrl = null;
+      if(t.coverUrl){
+        if(t.coverUrl.startsWith('data:')){ coverDataUrl = t.coverUrl; }
+        else { coverBlob = await blobFromUrl(t.coverUrl); }
+      }
+      trackRecords.push({ name: t.name, order: t.order, plays: t.plays, audioBlob, coverBlob, coverDataUrl });
+    }
+    const record = { name, tracks: trackRecords, savedAt: Date.now() };
+    await new Promise((resolve, reject)=>{
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      tx.objectStore(STORE_NAME).put(record);
+      tx.oncomplete = resolve;
+      tx.onerror = ()=> reject(tx.error);
+    });
+  }
+
+  async function listSavedPlaylists(){
+    const db = await openDB();
+    return new Promise((resolve, reject)=>{
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const req = tx.objectStore(STORE_NAME).getAll();
+      req.onsuccess = ()=> resolve(req.result || []);
+      req.onerror = ()=> reject(req.error);
+    });
+  }
+
+  async function deleteSavedPlaylist(name){
+    const db = await openDB();
+    await new Promise((resolve, reject)=>{
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      tx.objectStore(STORE_NAME).delete(name);
+      tx.oncomplete = resolve;
+      tx.onerror = ()=> reject(tx.error);
+    });
+  }
+
+  async function loadSavedPlaylist(name){
+    const db = await openDB();
+    const record = await new Promise((resolve, reject)=>{
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const req = tx.objectStore(STORE_NAME).get(name);
+      req.onsuccess = ()=> resolve(req.result);
+      req.onerror = ()=> reject(req.error);
+    });
+    if(!record) return;
+    audio.pause();
+    audio.removeAttribute('src');
+    tracks = [];
+    currentTrackIndex = -1;
+    currentPlayIndex = 0;
+    expandedTrackId = null;
+    record.tracks.slice().sort((a,b)=>a.order-b.order).forEach(rec=>{
+      const url = URL.createObjectURL(rec.audioBlob);
+      const coverUrl = rec.coverDataUrl ? rec.coverDataUrl : (rec.coverBlob ? URL.createObjectURL(rec.coverBlob) : null);
+      tracks.push({
+        id: 't' + (idCounter++),
+        order: rec.order,
+        name: rec.name,
+        url,
+        plays: (rec.plays && rec.plays.length) ? rec.plays : [{ speed: 1 }],
+        pendingSpeed: 1, pendingCount: 1, pendingCustomActive: false, pendingCustomValue: 2,
+        coverUrl,
+        skipOnce: false
+      });
+    });
+    trackTitle.textContent = 'No track loaded';
+    playStatus.textContent = tracks.length ? 'Select a track' : 'Load a file to begin';
+    seek.value = 0; curTime.textContent = '0:00'; durTime.textContent = '0:00';
+    renderPlaylist();
+    renderDeckCover();
+  }
+
+  const savePlaylistBtn = document.getElementById('savePlaylistBtn');
+  const loadPlaylistBtn = document.getElementById('loadPlaylistBtn');
+
+  savePlaylistBtn.addEventListener('click', async ()=>{
+    if(tracks.length === 0){ alert('Add some songs first, then save the playlist.'); return; }
+    const name = window.prompt('Name this playlist:');
+    if(!name) return;
+    savePlaylistBtn.textContent = 'Saving…';
+    try{
+      await saveCurrentPlaylist(name.trim());
+      savePlaylistBtn.textContent = '💾 Save playlist';
+      alert(`Saved "${name.trim()}" — you can load it anytime from "📂 Load playlist".`);
+    }catch(err){
+      savePlaylistBtn.textContent = '💾 Save playlist';
+      alert('Something went wrong saving this playlist. Your device storage might be full.');
+    }
+  });
+
+  loadPlaylistBtn.addEventListener('click', async ()=>{
+    let saved = [];
+    try{ saved = await listSavedPlaylists(); }catch(e){ /* IndexedDB unavailable */ }
+    const itemsHtml = saved.length
+      ? saved.sort((a,b)=>b.savedAt-a.savedAt).map(p => `
+          <div class="saved-list-item" data-loadname="${p.name}">
+            <div>
+              <div class="saved-list-name">${p.name}</div>
+              <div class="saved-list-meta">${p.tracks.length} song${p.tracks.length===1?'':'s'} · ${new Date(p.savedAt).toLocaleDateString()}</div>
+            </div>
+            <button class="saved-list-delete" data-deletename="${p.name}">✕</button>
+          </div>
+        `).join('')
+      : `<div class="saved-list-empty">No saved playlists yet.</div>`;
+
+    editOverlayContainer.innerHTML = `
+      <div class="edit-overlay" id="playlistOverlayBackdrop">
+        <div class="edit-panel">
+          <div class="edit-panel-title">Load a saved playlist</div>
+          ${itemsHtml}
+          <button class="edit-panel-close" id="playlistOverlayClose">Close</button>
+        </div>
+      </div>
+    `;
+    document.getElementById('playlistOverlayBackdrop').addEventListener('click', (e)=>{
+      if(e.target.id === 'playlistOverlayBackdrop') closeEditPopup();
+    });
+    document.getElementById('playlistOverlayClose').addEventListener('click', closeEditPopup);
+    editOverlayContainer.querySelectorAll('.saved-list-name, .saved-list-meta').forEach(el=>{
+      el.addEventListener('click', async ()=>{
+        const name = el.closest('.saved-list-item').dataset.loadname;
+        const ok = tracks.length === 0 || window.confirm('This will replace your current playlist. Continue?');
+        if(!ok) return;
+        closeEditPopup();
+        await loadSavedPlaylist(name);
+      });
+    });
+    editOverlayContainer.querySelectorAll('.saved-list-delete').forEach(el=>{
+      el.addEventListener('click', async (e)=>{
+        e.stopPropagation();
+        const name = el.dataset.deletename;
+        const ok = window.confirm(`Delete saved playlist "${name}"? This can't be undone.`);
+        if(!ok) return;
+        await deleteSavedPlaylist(name);
+        loadPlaylistBtn.click();
+      });
+    });
+  });
 
   audio.addEventListener('ended', ()=>{
     const t = currentTrack();
