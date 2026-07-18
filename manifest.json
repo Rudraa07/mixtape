@@ -2,7 +2,7 @@
   "name": "Mixtape — Per-Track Repeat & Speed",
   "short_name": "Mixtape",
   "description": "A local audio player with per-track repeat sequences, speed control, and cover art.",
-  "start_url": "./index.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
