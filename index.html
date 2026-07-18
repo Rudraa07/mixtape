@@ -245,6 +245,79 @@
   }
   .skip-toggle.on{ background:var(--red); border-color:var(--red); color:var(--cream); font-weight:700; }
   .skip-toggle:active{ opacity:0.7; }
+
+  /* ---- Deck style toggle ---- */
+  .style-toggle{
+    display:flex; gap:6px; justify-content:center; margin-bottom:16px;
+  }
+  .style-toggle-btn{
+    font-family:'JetBrains Mono', monospace; font-size:11px; letter-spacing:0.5px;
+    background:var(--panel2); border:1px solid var(--line); color:var(--muted);
+    padding:7px 14px; border-radius:20px; cursor:pointer;
+  }
+  .style-toggle-btn.active{ background:var(--amber); border-color:var(--amber); color:var(--bg); font-weight:700; }
+
+  .deck-visual{ display:none; }
+  .deck-visual.active{ display:block; }
+
+  /* ---- Turntable visual ---- */
+  .platter{
+    position:relative; width:220px; height:220px; margin:6px auto 20px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .vinyl{
+    width:210px; height:210px; border-radius:50%;
+    background:
+      repeating-radial-gradient(circle at center, #101010 0 3px, #1c1a18 3px 6px);
+    border:2px solid var(--line);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 6px 16px rgba(0,0,0,0.4);
+  }
+  .vinyl.spin{ animation: spin 2.4s linear infinite; }
+  .vinyl-label{
+    width:92px; height:92px; border-radius:50%;
+    overflow:hidden; border:2px solid var(--amber);
+    background:linear-gradient(135deg, var(--panel2), var(--bg));
+    display:flex; align-items:center; justify-content:center; position:relative;
+  }
+  .vinyl-label img{ width:100%; height:100%; object-fit:cover; }
+  .vinyl-label .cover-placeholder{ width:34px; height:34px; color:var(--line); }
+  .vinyl-center-dot{
+    position:absolute; width:10px; height:10px; border-radius:50%;
+    background:var(--bg); border:1px solid var(--muted);
+  }
+  .tonearm{
+    position:absolute; top:-6px; right:-2px;
+    width:100px; height:100px;
+    transform-origin: 90% 10%;
+    transform: rotate(-28deg);
+    transition: transform 0.5s ease;
+    pointer-events:none;
+  }
+  .tonearm.playing{ transform: rotate(-6deg); }
+  .tonearm-base{
+    position:absolute; top:0; right:6px;
+    width:16px; height:16px; border-radius:50%;
+    background:var(--panel2); border:2px solid var(--amber);
+  }
+  .tonearm-arm{
+    position:absolute; top:8px; right:12px;
+    width:3px; height:78px; border-radius:2px;
+    background:var(--amber);
+    transform-origin: top center;
+  }
+  .tonearm-head{
+    position:absolute; top:80px; right:5px;
+    width:16px; height:10px; border-radius:3px;
+    background:var(--amber);
+  }
+  .cover-edit-btn-tt{
+    display:block; margin:0 auto 4px; width:fit-content;
+    background:transparent; border:1px solid var(--line); color:var(--muted);
+    padding:5px 10px; border-radius:8px; font-size:11px; cursor:pointer;
+    font-family:'JetBrains Mono', monospace;
+  }
+  .cover-edit-btn-tt:active{ opacity:0.6; }
 </style>
 </head>
 <body>
@@ -253,13 +326,35 @@
   <h1>Mixtape</h1>
 
   <div class="deck">
-    <div class="reels">
-      <div class="reel" id="reelLeft"></div>
-      <div class="tape-window"></div>
-      <div class="reel" id="reelRight"></div>
+    <div class="style-toggle">
+      <button class="style-toggle-btn" id="styleCassetteBtn">📼 Cassette</button>
+      <button class="style-toggle-btn" id="styleTurntableBtn">💿 Turntable</button>
     </div>
 
-    <div class="cover-wrap" id="coverWrap"></div>
+    <div class="deck-visual" id="cassetteVisual">
+      <div class="reels">
+        <div class="reel" id="reelLeft"></div>
+        <div class="tape-window"></div>
+        <div class="reel" id="reelRight"></div>
+      </div>
+      <div class="cover-wrap" id="coverWrap"></div>
+    </div>
+
+    <div class="deck-visual" id="turntableVisual">
+      <div class="platter">
+        <div class="vinyl" id="vinylDisc">
+          <div class="vinyl-label" id="vinylLabel"></div>
+          <div class="vinyl-center-dot"></div>
+        </div>
+        <div class="tonearm" id="tonearm">
+          <div class="tonearm-base"></div>
+          <div class="tonearm-arm"></div>
+          <div class="tonearm-head"></div>
+        </div>
+      </div>
+      <button class="cover-edit-btn-tt" id="coverEditBtnTt">✎ Cover</button>
+    </div>
+
     <input type="file" id="coverInput" accept="image/*" style="display:none">
 
     <div class="track-title" id="trackTitle">No track loaded</div>
@@ -328,6 +423,8 @@
   const playStatus = document.getElementById('playStatus');
   const reelLeft = document.getElementById('reelLeft');
   const reelRight = document.getElementById('reelRight');
+  const vinylDisc = document.getElementById('vinylDisc');
+  const tonearm = document.getElementById('tonearm');
   const liveSpeedRow = document.getElementById('liveSpeedRow');
 
   const ICON_PLAY = '<path d="M8 5v14l11-7z"/>';
@@ -587,15 +684,19 @@
 
   function renderDeckCover(){
     const t = currentTrack();
-    const wrap = document.getElementById('coverWrap');
     const imgHtml = (t && t.coverUrl)
       ? `<img src="${t.coverUrl}" alt="cover art">`
       : `<svg class="cover-placeholder" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3z"/></svg>`;
+
+    const wrap = document.getElementById('coverWrap');
     wrap.innerHTML = `${imgHtml}<button class="cover-edit-btn" id="coverEditBtn">✎ Cover</button>`;
     document.getElementById('coverEditBtn').addEventListener('click', ()=>{
       if(currentTrackIndex === -1) return;
       coverInput.click();
     });
+
+    const label = document.getElementById('vinylLabel');
+    label.innerHTML = imgHtml;
   }
 
   const coverInput = document.getElementById('coverInput');
@@ -608,6 +709,33 @@
     renderPlaylist();
     coverInput.value = '';
   });
+
+  document.getElementById('coverEditBtnTt').addEventListener('click', ()=>{
+    if(currentTrackIndex === -1) return;
+    coverInput.click();
+  });
+
+  // Deck style toggle — persists preference where storage is available
+  const styleCassetteBtn = document.getElementById('styleCassetteBtn');
+  const styleTurntableBtn = document.getElementById('styleTurntableBtn');
+  const cassetteVisual = document.getElementById('cassetteVisual');
+  const turntableVisual = document.getElementById('turntableVisual');
+
+  function setDeckStyle(style){
+    const isCassette = style !== 'turntable';
+    cassetteVisual.classList.toggle('active', isCassette);
+    turntableVisual.classList.toggle('active', !isCassette);
+    styleCassetteBtn.classList.toggle('active', isCassette);
+    styleTurntableBtn.classList.toggle('active', !isCassette);
+    try{ localStorage.setItem('mixtape-deck-style', style); }catch(e){ /* storage unavailable, preference just won't persist */ }
+  }
+
+  styleCassetteBtn.addEventListener('click', ()=> setDeckStyle('cassette'));
+  styleTurntableBtn.addEventListener('click', ()=> setDeckStyle('turntable'));
+
+  let savedStyle = 'cassette';
+  try{ savedStyle = localStorage.getItem('mixtape-deck-style') || 'cassette'; }catch(e){ /* default to cassette */ }
+  setDeckStyle(savedStyle);
 
   function updateStatus(){
     const t = currentTrack();
@@ -635,7 +763,7 @@
         skipOnce: false
       };
       tracks.push(newTrack);
-      extractCover(f, newTrack);
+      try{ extractCover(f, newTrack); }catch(err){ /* cover extraction failing should never block adding the song */ }
     });
     renderPlaylist();
     if(currentTrackIndex === -1 && tracks.length > 0){ loadTrack(0, 0, false); }
@@ -644,18 +772,22 @@
 
   function extractCover(file, track){
     if(typeof jsmediatags === 'undefined') return;
-    jsmediatags.read(file, {
-      onSuccess: function(tag){
-        const pic = tag.tags.picture;
-        if(!pic) return;
-        let binary = '';
-        for(let i=0; i<pic.data.length; i++){ binary += String.fromCharCode(pic.data[i]); }
-        track.coverUrl = `data:${pic.format};base64,${window.btoa(binary)}`;
-        if(currentTrack() === track) renderDeckCover();
-        renderPlaylist();
-      },
-      onError: function(){ /* no embedded art found — user can add one manually */ }
-    });
+    try{
+      jsmediatags.read(file, {
+        onSuccess: function(tag){
+          try{
+            const pic = tag.tags.picture;
+            if(!pic) return;
+            let binary = '';
+            for(let i=0; i<pic.data.length; i++){ binary += String.fromCharCode(pic.data[i]); }
+            track.coverUrl = `data:${pic.format};base64,${window.btoa(binary)}`;
+            if(currentTrack() === track) renderDeckCover();
+            renderPlaylist();
+          }catch(err){ /* malformed tag data — just skip the cover */ }
+        },
+        onError: function(){ /* no embedded art found — user can add one manually */ }
+      });
+    }catch(err){ /* library failed to run — song is already added regardless */ }
   }
 
   playBtn.addEventListener('click', ()=>{
@@ -667,11 +799,15 @@
     document.getElementById('playIcon').outerHTML = `<svg id="playIcon" viewBox="0 0 24 24" fill="currentColor">${ICON_PAUSE}</svg>`;
     reelLeft.classList.add('spin');
     reelRight.classList.add('spin');
+    vinylDisc.classList.add('spin');
+    tonearm.classList.add('playing');
   });
   audio.addEventListener('pause', ()=>{
     document.getElementById('playIcon').outerHTML = `<svg id="playIcon" viewBox="0 0 24 24" fill="currentColor">${ICON_PLAY}</svg>`;
     reelLeft.classList.remove('spin');
     reelRight.classList.remove('spin');
+    vinylDisc.classList.remove('spin');
+    tonearm.classList.remove('playing');
   });
 
   audio.addEventListener('timeupdate', ()=>{
@@ -752,6 +888,8 @@
   });
 
   renderDeckCover();
+
+  if('serviceWorker' in navigator){
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('sw.js').catch(()=>{ /* offline caching unavailable, app still works online */ });
     });
