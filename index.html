@@ -135,6 +135,27 @@
   }
   .saved-list-empty{ text-align:center; color:var(--muted); font-size:13px; padding:14px 6px; }
 
+  .jamendo-search-row{ display:flex; gap:8px; margin-bottom:12px; }
+  .jamendo-search-input{
+    flex:1; background:var(--bg); border:1px solid var(--line); border-radius:8px;
+    padding:9px 10px; color:var(--cream); font-family:'JetBrains Mono', monospace; font-size:13px;
+  }
+  .jamendo-search-btn{
+    background:var(--amber); border:none; color:var(--bg); font-weight:700;
+    padding:9px 16px; border-radius:8px; cursor:pointer; font-family:'JetBrains Mono', monospace;
+  }
+  .jamendo-results{ max-height:320px; overflow-y:auto; }
+  .jamendo-result-left{ display:flex; align-items:center; gap:10px; min-width:0; }
+  .jamendo-result-thumb{
+    width:38px; height:38px; border-radius:7px; object-fit:cover; flex-shrink:0; background:var(--panel2);
+  }
+  .jamendo-add-btn{
+    flex-shrink:0; background:transparent; border:1px solid var(--line); color:var(--muted);
+    padding:6px 12px; border-radius:8px; cursor:pointer; font-family:'JetBrains Mono', monospace; font-size:11px;
+  }
+  .jamendo-add-btn:active{ background:var(--amber); border-color:var(--amber); color:var(--bg); }
+  .jamendo-add-btn:disabled{ opacity:0.5; }
+
   /* ---- Playlist ---- */
   .playlist-label{
     font-family:'JetBrains Mono', monospace; font-size:11px; letter-spacing:2px;
@@ -395,6 +416,7 @@
     <input type="file" id="coverInput" accept="image/*" style="display:none">
 
     <div class="track-title" id="trackTitle">No track loaded</div>
+    <div id="trackArtist" style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted);text-align:center;margin:1px 0 4px;min-height:16px;"></div>
     <div class="play-status" id="playStatus">Load a file to begin</div>
 
     <div class="seek-row">
@@ -422,7 +444,7 @@
         <div class="speed-chip" data-speed="1">1×</div>
         <div class="speed-chip" data-speed="1.25">1.25×</div>
         <div class="speed-chip" data-speed="1.5">1.5×</div>
-        <div class="speed-chip" data-speed="3">3×</div>
+        <div class="speed-chip" data-speed="2">2×</div>
       </div>
     </div>
 
@@ -432,6 +454,9 @@
       <div class="playlist-io-row">
         <button class="playlist-io-btn" id="savePlaylistBtn">💾 Save playlist</button>
         <button class="playlist-io-btn" id="loadPlaylistBtn">📂 Load playlist</button>
+      </div>
+      <div class="playlist-io-row">
+        <button class="playlist-io-btn" id="browseJamendoBtn">🎧 Browse free music</button>
       </div>
     </div>
   </div>
@@ -475,7 +500,7 @@
 
   const ICON_PLAY = '<path d="M8 5v14l11-7z"/>';
   const ICON_PAUSE = '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>';
-  const SPEEDS = [0.75, 1, 1.25, 1.5, 3];
+  const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
 
   // track: { id, name, url, plays:[{speed}] }
   let tracks = [];
@@ -722,6 +747,7 @@
     audio.src = t.url;
     audio.playbackRate = t.plays[currentPlayIndex].speed;
     trackTitle.textContent = t.name;
+    document.getElementById('trackArtist').textContent = t.artist || '';
     updateStatus();
     renderPlaylist();
     renderDeckCover();
@@ -801,6 +827,7 @@
         id: 't' + seq,
         order: seq,
         name: f.name.replace(/\.[^/.]+$/, ''),
+        artist: '',
         url: URL.createObjectURL(f),
         plays: [{ speed: 1 }],
         pendingSpeed: 1,
@@ -825,6 +852,8 @@
       jsmediatags.read(file, {
         onSuccess: function(tag){
           try{
+            if(tag.tags.artist) { track.artist = tag.tags.artist; if(currentTrack()===track){ document.getElementById('trackArtist').textContent = track.artist; } }
+            if(tag.tags.title) { track.name = tag.tags.title; if(currentTrack()===track){ trackTitle.textContent = track.name; } }
             const pic = tag.tags.picture;
             if(!pic) return;
             let binary = '';
@@ -964,13 +993,18 @@
     const db = await openDB();
     const trackRecords = [];
     for(const t of tracks){
-      const audioBlob = await blobFromUrl(t.url);
-      let coverBlob = null, coverDataUrl = null;
+      let audioBlob = null, remoteUrl = null;
+      try{ audioBlob = await blobFromUrl(t.url); }
+      catch(e){ remoteUrl = t.url; }
+      let coverBlob = null, coverDataUrl = null, remoteCoverUrl = null;
       if(t.coverUrl){
         if(t.coverUrl.startsWith('data:')){ coverDataUrl = t.coverUrl; }
-        else { coverBlob = await blobFromUrl(t.coverUrl); }
+        else {
+          try{ coverBlob = await blobFromUrl(t.coverUrl); }
+          catch(e){ remoteCoverUrl = t.coverUrl; }
+        }
       }
-      trackRecords.push({ name: t.name, order: t.order, plays: t.plays, audioBlob, coverBlob, coverDataUrl });
+      trackRecords.push({ name: t.name, artist: t.artist || '', order: t.order, plays: t.plays, audioBlob, remoteUrl, coverBlob, coverDataUrl, remoteCoverUrl });
     }
     const record = { name, tracks: trackRecords, savedAt: Date.now() };
     await new Promise((resolve, reject)=>{
@@ -1017,14 +1051,15 @@
     currentPlayIndex = 0;
     expandedTrackId = null;
     record.tracks.slice().sort((a,b)=>a.order-b.order).forEach(rec=>{
-      const url = URL.createObjectURL(rec.audioBlob);
-      const coverUrl = rec.coverDataUrl ? rec.coverDataUrl : (rec.coverBlob ? URL.createObjectURL(rec.coverBlob) : null);
+      const url = rec.audioBlob ? URL.createObjectURL(rec.audioBlob) : rec.remoteUrl;
+      const coverUrl = rec.coverDataUrl ? rec.coverDataUrl : (rec.coverBlob ? URL.createObjectURL(rec.coverBlob) : (rec.remoteCoverUrl || null));
       tracks.push({
         id: 't' + (idCounter++),
         order: rec.order,
         name: rec.name,
         url,
         plays: (rec.plays && rec.plays.length) ? rec.plays : [{ speed: 1 }],
+        artist: rec.artist || '',
         pendingSpeed: 1, pendingCount: 1, pendingCustomActive: false, pendingCustomValue: 2,
         coverUrl,
         skipOnce: false
@@ -1039,6 +1074,159 @@
 
   const savePlaylistBtn = document.getElementById('savePlaylistBtn');
   const loadPlaylistBtn = document.getElementById('loadPlaylistBtn');
+
+  // ---- Jamendo browse & import (legally free/downloadable catalog) ----
+  const JAMENDO_CLIENT_ID = '50d2c7fa';
+
+  async function searchJamendo(query){
+    const url = `https://api.jamendo.com/v3.0/tracks/?client_id=${JAMENDO_CLIENT_ID}&format=json&limit=24&search=${encodeURIComponent(query)}&include=musicinfo`;
+    const res = await fetch(url);
+    const data = await res.json();
+    return (data.results || []).map(r => ({
+      id: r.id,
+      name: r.name,
+      artist: r.artist_name,
+      audioUrl: r.audio || r.audiodownload,
+      artUrl: r.album_image || r.image || null
+    }));
+  }
+
+  async function searchCcMixter(query){
+    const res = await fetch(`/api/ccmixter?q=${encodeURIComponent(query)}`);
+    const data = await res.json();
+    const rows = Array.isArray(data) ? data : (data.results || data.rows || []);
+    return rows.map(r => {
+      const fileObj = (r.files && r.files[0]) || {};
+      return {
+        id: r.upload_id || r.id,
+        name: r.upload_name || r.name || r.title || 'Untitled',
+        artist: r.user_name || r.artist_name || r.artist || 'Unknown artist',
+        audioUrl: r.file_url || r.download_url || fileObj.download_url || fileObj.url || r.sample_url,
+        artUrl: r.art_url || r.art || r.image || null
+      };
+    }).filter(t => t.audioUrl);
+  }
+
+  async function searchArchive(query){
+    const res = await fetch(`/api/archive?q=${encodeURIComponent(query)}`);
+    const data = await res.json();
+    return data.results || [];
+  }
+
+  async function searchFreesound(query){
+    const res = await fetch(`/api/freesound?q=${encodeURIComponent(query)}`);
+    const data = await res.json();
+    if(data.error) throw new Error(data.error);
+    return (data.results || []).map(r => ({
+      id: r.id,
+      name: r.name,
+      artist: r.username || 'Unknown artist',
+      audioUrl: r.previews ? (r.previews['preview-hq-mp3'] || r.previews['preview-lq-mp3']) : null,
+      artUrl: r.images ? (r.images.waveform_m || null) : null
+    })).filter(t => t.audioUrl);
+  }
+
+  function addBrowsedTrack(t){
+    const seq = idCounter++;
+    tracks.push({
+      id: 't' + seq,
+      order: seq,
+      name: `${t.artist} - ${t.name}`,
+      url: t.audioUrl,
+      plays: [{ speed: 1 }],
+      pendingSpeed: 1, pendingCount: 1, pendingCustomActive: false, pendingCustomValue: 2,
+      coverUrl: t.artUrl || null,
+      skipOnce: false
+    });
+    renderPlaylist();
+    if(currentTrackIndex === -1){ loadTrack(0, 0, false); }
+  }
+
+  let browseSource = 'jamendo';
+  const BROWSE_SOURCES = [
+    { id: 'jamendo', label: 'Jamendo' },
+    { id: 'ccmixter', label: 'ccMixter' },
+    { id: 'archive', label: 'Archive.org' },
+    { id: 'freesound', label: 'Freesound' }
+  ];
+
+  document.getElementById('browseJamendoBtn').addEventListener('click', ()=>{
+    editOverlayContainer.innerHTML = `
+      <div class="edit-overlay" id="jamendoOverlayBackdrop">
+        <div class="edit-panel" style="max-width:380px;">
+          <div class="edit-panel-title">Browse free music</div>
+          <div class="chip-row" id="browseSourceTabs" style="margin-bottom:12px; justify-content:center;">
+            ${BROWSE_SOURCES.map(s => `<button class="setup-chip ${browseSource===s.id?'sel':''}" data-source="${s.id}">${s.label}</button>`).join('')}
+          </div>
+          <div class="jamendo-search-row">
+            <input type="text" class="jamendo-search-input" id="jamendoSearchInput" placeholder="Search song or artist">
+            <button class="jamendo-search-btn" id="jamendoSearchBtn">Go</button>
+          </div>
+          <div class="jamendo-results" id="jamendoResults"></div>
+          <button class="edit-panel-close" id="jamendoOverlayClose">Close</button>
+        </div>
+      </div>
+    `;
+    document.getElementById('jamendoOverlayBackdrop').addEventListener('click', (e)=>{
+      if(e.target.id === 'jamendoOverlayBackdrop') closeEditPopup();
+    });
+    document.getElementById('jamendoOverlayClose').addEventListener('click', closeEditPopup);
+
+    const input = document.getElementById('jamendoSearchInput');
+    const resultsEl = document.getElementById('jamendoResults');
+    const tabsEl = document.getElementById('browseSourceTabs');
+
+    tabsEl.querySelectorAll('[data-source]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        browseSource = btn.dataset.source;
+        tabsEl.querySelectorAll('[data-source]').forEach(b => b.classList.toggle('sel', b.dataset.source === browseSource));
+      });
+    });
+
+    const doSearch = async ()=>{
+      const q = input.value.trim();
+      if(!q) return;
+      resultsEl.innerHTML = '<div class="saved-list-empty">Searching…</div>';
+      try{
+        let results;
+        if(browseSource === 'ccmixter') results = await searchCcMixter(q);
+        else if(browseSource === 'archive') results = await searchArchive(q);
+        else if(browseSource === 'freesound') results = await searchFreesound(q);
+        else results = await searchJamendo(q);
+
+        if(results.length === 0){
+          resultsEl.innerHTML = '<div class="saved-list-empty">No results found.</div>';
+          return;
+        }
+        resultsEl.innerHTML = results.map(r => `
+          <div class="saved-list-item">
+            <div class="jamendo-result-left">
+              <img class="jamendo-result-thumb" src="${r.artUrl || ''}" onerror="this.style.visibility='hidden'">
+              <div>
+                <div class="saved-list-name">${r.name}</div>
+                <div class="saved-list-meta">${r.artist}</div>
+              </div>
+            </div>
+            <button class="jamendo-add-btn" data-jaddid="${r.id}">+ Add</button>
+          </div>
+        `).join('');
+        resultsEl.querySelectorAll('[data-jaddid]').forEach(btn=>{
+          btn.addEventListener('click', ()=>{
+            const track = results.find(r => String(r.id) === btn.dataset.jaddid);
+            if(!track) return;
+            addBrowsedTrack(track);
+            btn.textContent = 'Added ✓';
+            btn.disabled = true;
+          });
+        });
+      }catch(err){
+        resultsEl.innerHTML = '<div class="saved-list-empty">Something went wrong searching. Check your connection.</div>';
+      }
+    };
+    document.getElementById('jamendoSearchBtn').addEventListener('click', doSearch);
+    input.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') doSearch(); });
+    input.focus();
+  });
 
   savePlaylistBtn.addEventListener('click', async ()=>{
     if(tracks.length === 0){ alert('Add some songs first, then save the playlist.'); return; }
@@ -1155,6 +1343,31 @@
   });
 
   renderDeckCover();
+
+  // Media Session API — lock screen controls
+  function updateMediaSession(){
+    if(!('mediaSession' in navigator)) return;
+    const t = currentTrack();
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: t ? t.name : 'Mixtape',
+      artist: t ? (t.artist || '') : '',
+      artwork: t && t.coverUrl ? [{ src: t.coverUrl }] : []
+    });
+  }
+  if('mediaSession' in navigator){
+    navigator.mediaSession.setActionHandler('play', ()=>{ audio.play(); });
+    navigator.mediaSession.setActionHandler('pause', ()=>{ audio.pause(); });
+    navigator.mediaSession.setActionHandler('previoustrack', ()=>{
+      const i = prevPlayableIndex(currentTrackIndex);
+      if(i !== -1) loadTrack(i, 0, true);
+    });
+    navigator.mediaSession.setActionHandler('nexttrack', ()=>{
+      const i = nextPlayableIndex(currentTrackIndex);
+      if(i !== -1) loadTrack(i, 0, true);
+    });
+  }
+  audio.addEventListener('play', updateMediaSession);
+  audio.addEventListener('pause', updateMediaSession);
 
   if('serviceWorker' in navigator){
     window.addEventListener('load', () => {
