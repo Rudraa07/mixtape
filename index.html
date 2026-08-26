@@ -1345,12 +1345,26 @@
 
   renderDeckCover();
 
-  // Request notification permission on startup
-  if('Notification' in window && Notification.permission === 'default'){
-    Notification.requestPermission();
-  }
+  // Silent audio loop — keeps WebView audio focus alive so Android doesn't kill playback
+  (function keepAlive(){
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const silentBuffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate); // 1s silence
+    function playSilence(){
+      const src = ctx.createBufferSource();
+      src.buffer = silentBuffer;
+      src.connect(ctx.destination);
+      src.onended = playSilence;
+      src.start();
+    }
+    // Start on first user gesture
+    document.addEventListener('click', function startCtx(){
+      if(ctx.state === 'suspended') ctx.resume();
+      playSilence();
+      document.removeEventListener('click', startCtx);
+    }, { once: true });
+  })();
 
-  // Wake Lock — prevent Android killing audio in background
+  // Wake Lock
   let wakeLock = null;
   async function requestWakeLock(){
     if(!('wakeLock' in navigator)) return;
@@ -1367,6 +1381,11 @@
   document.addEventListener('visibilitychange', async ()=>{
     if(document.visibilityState === 'visible' && !audio.paused) await requestWakeLock();
   });
+
+  // Notification permission
+  if('Notification' in window && Notification.permission === 'default'){
+    Notification.requestPermission();
+  }
 
   // Media Session API — lock screen controls
   function updateMediaSession(){
