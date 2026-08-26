@@ -381,7 +381,7 @@
 </head>
 <body>
 <div class="app">
-  <h1>Mixtape</h1>
+  <h1>Mixtape <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.20</span></h1>
 
   <div class="deck">
     <div class="style-toggle">
@@ -749,6 +749,7 @@
     trackTitle.textContent = t.name;
     document.getElementById('trackArtist').textContent = t.artist || '';
     updateStatus();
+    if(typeof updateMediaSession === 'function') updateMediaSession();
     renderPlaylist();
     renderDeckCover();
     if(autoplay){ audio.play(); }
@@ -852,8 +853,8 @@
       jsmediatags.read(file, {
         onSuccess: function(tag){
           try{
-            if(tag.tags.artist) { track.artist = tag.tags.artist; if(currentTrack()===track){ document.getElementById('trackArtist').textContent = track.artist; } }
-            if(tag.tags.title) { track.name = tag.tags.title; if(currentTrack()===track){ trackTitle.textContent = track.name; } }
+            if(tag.tags.artist){ track.artist = tag.tags.artist; if(currentTrack()===track) document.getElementById('trackArtist').textContent = track.artist; }
+            if(tag.tags.title){ track.name = tag.tags.title; if(currentTrack()===track) trackTitle.textContent = track.name; }
             const pic = tag.tags.picture;
             if(!pic) return;
             let binary = '';
@@ -1344,6 +1345,29 @@
 
   renderDeckCover();
 
+  // Request notification permission on startup
+  if('Notification' in window && Notification.permission === 'default'){
+    Notification.requestPermission();
+  }
+
+  // Wake Lock — prevent Android killing audio in background
+  let wakeLock = null;
+  async function requestWakeLock(){
+    if(!('wakeLock' in navigator)) return;
+    try{
+      if(wakeLock) return;
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', ()=>{ wakeLock = null; });
+    }catch(e){}
+  }
+  async function releaseWakeLock(){
+    if(!wakeLock) return;
+    try{ await wakeLock.release(); wakeLock = null; }catch(e){}
+  }
+  document.addEventListener('visibilitychange', async ()=>{
+    if(document.visibilityState === 'visible' && !audio.paused) await requestWakeLock();
+  });
+
   // Media Session API — lock screen controls
   function updateMediaSession(){
     if(!('mediaSession' in navigator)) return;
@@ -1366,8 +1390,8 @@
       if(i !== -1) loadTrack(i, 0, true);
     });
   }
-  audio.addEventListener('play', updateMediaSession);
-  audio.addEventListener('pause', updateMediaSession);
+  audio.addEventListener('play', ()=>{ updateMediaSession(); requestWakeLock(); });
+  audio.addEventListener('pause', ()=>{ releaseWakeLock(); });
 
   if('serviceWorker' in navigator){
     window.addEventListener('load', () => {
