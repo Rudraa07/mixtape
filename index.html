@@ -381,7 +381,7 @@
 </head>
 <body>
 <div class="app">
-  <h1>Mixtape <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.20</span></h1>
+  <h1>Mixtape <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.22</span></h1>
 
   <div class="deck">
     <div class="style-toggle">
@@ -1345,49 +1345,7 @@
 
   renderDeckCover();
 
-  // Silent audio loop — keeps WebView audio focus alive so Android doesn't kill playback
-  (function keepAlive(){
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const silentBuffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate); // 1s silence
-    function playSilence(){
-      const src = ctx.createBufferSource();
-      src.buffer = silentBuffer;
-      src.connect(ctx.destination);
-      src.onended = playSilence;
-      src.start();
-    }
-    // Start on first user gesture
-    document.addEventListener('click', function startCtx(){
-      if(ctx.state === 'suspended') ctx.resume();
-      playSilence();
-      document.removeEventListener('click', startCtx);
-    }, { once: true });
-  })();
-
-  // Wake Lock
-  let wakeLock = null;
-  async function requestWakeLock(){
-    if(!('wakeLock' in navigator)) return;
-    try{
-      if(wakeLock) return;
-      wakeLock = await navigator.wakeLock.request('screen');
-      wakeLock.addEventListener('release', ()=>{ wakeLock = null; });
-    }catch(e){}
-  }
-  async function releaseWakeLock(){
-    if(!wakeLock) return;
-    try{ await wakeLock.release(); wakeLock = null; }catch(e){}
-  }
-  document.addEventListener('visibilitychange', async ()=>{
-    if(document.visibilityState === 'visible' && !audio.paused) await requestWakeLock();
-  });
-
-  // Notification permission
-  if('Notification' in window && Notification.permission === 'default'){
-    Notification.requestPermission();
-  }
-
-  // Media Session API — lock screen controls
+  // Media Session API — lock screen controls only, no extra audio contexts
   function updateMediaSession(){
     if(!('mediaSession' in navigator)) return;
     const t = currentTrack();
@@ -1409,8 +1367,8 @@
       if(i !== -1) loadTrack(i, 0, true);
     });
   }
-  audio.addEventListener('play', ()=>{ updateMediaSession(); requestWakeLock(); });
-  audio.addEventListener('pause', ()=>{ releaseWakeLock(); });
+  audio.addEventListener('play', updateMediaSession);
+  audio.addEventListener('pause', updateMediaSession);
 
   if('serviceWorker' in navigator){
     window.addEventListener('load', () => {
