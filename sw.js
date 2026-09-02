@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mixtape-cache-v1';
+const CACHE_NAME = 'mixtape-cache-v2';
 const ASSETS = [
   './index.html',
   './manifest.json',
@@ -23,7 +23,9 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Only handle same-origin app-shell requests; let everything else (fonts, jsmediatags CDN) pass through normally
+  const url = new URL(event.request.url);
+  // Never intercept admin or API routes — let them go straight to the Worker
+  if (url.pathname.startsWith('/admin') || url.pathname.startsWith('/api')) return;
   if (event.request.url.startsWith(self.location.origin)) {
     event.respondWith(
       caches.match(event.request).then((cached) => cached || fetch(event.request))
