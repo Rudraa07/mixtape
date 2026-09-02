@@ -49,10 +49,14 @@ async function getSession(request, DB) {
 }
 
 // ---- Admin HTML ----
+function crownSvg(color, title) {
+  return `<svg title="${title}" width="22" height="22" viewBox="0 0 24 24" fill="${color}" xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle;cursor:pointer;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4))"><path d="M2 19h20v2H2v-2zm0-2l3-9 4.5 4.5L12 4l2.5 8.5L19 8l3 9H2z"/></svg>`;
+}
+
 function crownIcon(limit) {
-  if (limit === -1) return '<span title="Unlimited" style="color:#e8a33d;font-size:16px;">👑</span>';
-  if (limit === 0)  return '<span title="No access" style="color:#c1443c;font-size:16px;">👑</span>';
-  return '<span title="Custom limit" style="color:#4a8c8c;font-size:16px;">👑</span>';
+  if (limit === -1) return crownSvg('#e8a33d', 'Unlimited');
+  if (limit === 0)  return crownSvg('#c1443c', 'No access');
+  return crownSvg('#4a8c8c', 'Custom limit');
 }
 
 function limitLabel(limit, used) {
@@ -74,14 +78,12 @@ function adminHTML(users) {
         ${crownIcon(u.storage_limit_mb)}
         <span style="font-size:12px;color:#9a9186;margin-left:4px;">${limitLabel(u.storage_limit_mb, u.storage_used_mb)}</span>
       </td>
-      <td>
-        <select onchange="setLimit(${u.id}, this.value)" style="background:#1a1816;color:#f2ede4;border:1px solid #3a352f;border-radius:4px;padding:4px;font-family:monospace;font-size:12px;">
-          <option value="-1" ${u.storage_limit_mb===-1?'selected':''}>👑 Unlimited</option>
-          <option value="0"  ${u.storage_limit_mb===0?'selected':''}>👑 No access</option>
-          <option value="custom" ${u.storage_limit_mb>0?'selected':''}>👑 Custom</option>
-        </select>
-        ${u.storage_limit_mb > 0 ? `<input type="number" id="custom_${u.id}" value="${u.storage_limit_mb}" min="1" style="width:60px;background:#1a1816;color:#f2ede4;border:1px solid #3a352f;border-radius:4px;padding:4px;font-family:monospace;font-size:12px;margin-left:4px;">
-        <button onclick="saveCustom(${u.id})" style="padding:4px 8px;">Save</button>` : ''}
+      <td style="text-align:center;">
+        <span onclick="cycleCrown(${u.id}, ${u.storage_limit_mb})" id="crown_${u.id}" title="Tap to change">
+          ${crownIcon(u.storage_limit_mb)}
+        </span>
+        ${u.storage_limit_mb > 0 ? `<br><input type="number" id="custom_${u.id}" value="${u.storage_limit_mb}" min="1" style="width:60px;background:#1a1816;color:#f2ede4;border:1px solid #3a352f;border-radius:4px;padding:4px;font-family:monospace;font-size:11px;margin-top:4px;">
+        <button onclick="saveCustom(${u.id})" style="padding:3px 7px;font-size:11px;">✓</button>` : ''}
       </td>
       <td>
         ${u.status === 'pending' ? `<button onclick="approve(${u.id})">Approve</button>` : ''}
@@ -129,10 +131,18 @@ function adminHTML(users) {
     if (d.ok) location.reload();
     else alert('Error: ' + d.error);
   }
-  async function setLimit(id, value) {
-    if (value === 'custom') { location.reload(); return; }
-    const limit = parseInt(value);
-    const r = await fetch('/admin/setlimit', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ id, limit }) });
+  async function cycleCrown(id, current) {
+    // Cycle: 0 (red) → 1 (green, ask for MB) → -1 (gold) → 0
+    let next;
+    if (current === 0) next = 1;
+    else if (current > 0) next = -1;
+    else next = 0;
+    if (next === 1) {
+      const mb = prompt('Enter storage limit in MB:');
+      if (!mb || isNaN(parseInt(mb)) || parseInt(mb) < 1) return;
+      next = parseInt(mb);
+    }
+    const r = await fetch('/admin/setlimit', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ id, limit: next }) });
     const d = await r.json();
     if (d.ok) location.reload();
     else alert('Error: ' + d.error);
