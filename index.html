@@ -485,7 +485,18 @@
   (async function checkAuth(){
     try{
       const r = await fetch('/api/me');
-      if(r.status === 401) window.location.href = '/';
+      if(r.status === 401){
+        // Unregister SW so next load hits the Worker auth gate properly
+        if('serviceWorker' in navigator){
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map(r => r.unregister()));
+        }
+        // Clear caches
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+        // Now redirect — Worker will serve the login page
+        window.location.replace('/');
+      }
     }catch(e){ /* network error, let it through */ }
   })();
 
