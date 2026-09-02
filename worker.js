@@ -49,6 +49,18 @@ async function getSession(request, DB) {
 }
 
 // ---- Admin HTML ----
+function crownIcon(limit) {
+  if (limit === -1) return '<span title="Unlimited" style="color:#e8a33d;font-size:16px;">👑</span>';
+  if (limit === 0)  return '<span title="No access" style="color:#c1443c;font-size:16px;">👑</span>';
+  return '<span title="Custom limit" style="color:#4a8c8c;font-size:16px;">👑</span>';
+}
+
+function limitLabel(limit, used) {
+  if (limit === -1) return 'Unlimited';
+  if (limit === 0)  return 'No access';
+  return `${(used||0).toFixed(1)} / ${limit} MB`;
+}
+
 function adminHTML(users) {
   const rows = users.map(u => `
     <tr>
@@ -58,6 +70,19 @@ function adminHTML(users) {
       <td>${new Date(u.created_at).toLocaleDateString()}</td>
       <td><span class="status ${u.status}">${u.status}</span></td>
       <td>${u.access_code || '—'}</td>
+      <td>
+        ${crownIcon(u.storage_limit_mb)}
+        <span style="font-size:12px;color:#9a9186;margin-left:4px;">${limitLabel(u.storage_limit_mb, u.storage_used_mb)}</span>
+      </td>
+      <td>
+        <select onchange="setLimit(${u.id}, this.value)" style="background:#1a1816;color:#f2ede4;border:1px solid #3a352f;border-radius:4px;padding:4px;font-family:monospace;font-size:12px;">
+          <option value="-1" ${u.storage_limit_mb===-1?'selected':''}>👑 Unlimited</option>
+          <option value="0"  ${u.storage_limit_mb===0?'selected':''}>👑 No access</option>
+          <option value="custom" ${u.storage_limit_mb>0?'selected':''}>👑 Custom</option>
+        </select>
+        ${u.storage_limit_mb > 0 ? `<input type="number" id="custom_${u.id}" value="${u.storage_limit_mb}" min="1" style="width:60px;background:#1a1816;color:#f2ede4;border:1px solid #3a352f;border-radius:4px;padding:4px;font-family:monospace;font-size:12px;margin-left:4px;">
+        <button onclick="saveCustom(${u.id})" style="padding:4px 8px;">Save</button>` : ''}
+      </td>
       <td>
         ${u.status === 'pending' ? `<button onclick="approve(${u.id})">Approve</button>` : ''}
         <button onclick="del(${u.id})" class="del">Delete</button>
@@ -72,10 +97,10 @@ function adminHTML(users) {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Mixtape Admin</title>
 <style>
-  body { font-family: monospace; background: #1a1816; color: #f2ede4; padding: 20px; }
+  body { font-family: monospace; background: #1a1816; color: #f2ede4; padding: 20px; overflow-x:auto; }
   h1 { color: #e8a33d; }
-  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-  th, td { padding: 10px; border: 1px solid #3a352f; text-align: left; font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 20px; min-width:700px; }
+  th, td { padding: 10px; border: 1px solid #3a352f; text-align: left; font-size: 13px; vertical-align:middle; }
   th { background: #221f1c; color: #9a9186; }
   .pending { color: #e8a33d; }
   .approved { color: #4a8c8c; }
@@ -87,19 +112,36 @@ function adminHTML(users) {
 <body>
 <h1>Mixtape Admin <button class="logout" onclick="location.href='/admin/logout'">Logout</button></h1>
 <table>
-  <thead><tr><th>#</th><th>Name</th><th>Email</th><th>Signed up</th><th>Status</th><th>Code</th><th>Actions</th></tr></thead>
-  <tbody>${rows || '<tr><td colspan="7" style="text-align:center;color:#9a9186;">No users yet</td></tr>'}</tbody>
+  <thead><tr><th>#</th><th>Name</th><th>Email</th><th>Signed up</th><th>Status</th><th>Code</th><th>Storage</th><th>Limit</th><th>Actions</th></tr></thead>
+  <tbody>${rows || '<tr><td colspan="9" style="text-align:center;color:#9a9186;">No users yet</td></tr>'}</tbody>
 </table>
 <script>
   async function approve(id) {
     const r = await fetch('/admin/approve', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ id }) });
     const d = await r.json();
-    if (d.code) { alert('Approved! Code: ' + d.code); location.reload(); }
+    if (d.code) { alert('Approved!\nCode: ' + d.code); location.reload(); }
     else alert('Error: ' + d.error);
   }
   async function del(id) {
     if (!confirm('Delete this user?')) return;
     const r = await fetch('/admin/delete', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ id }) });
+    const d = await r.json();
+    if (d.ok) location.reload();
+    else alert('Error: ' + d.error);
+  }
+  async function setLimit(id, value) {
+    if (value === 'custom') { location.reload(); return; }
+    const limit = parseInt(value);
+    const r = await fetch('/admin/setlimit', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ id, limit }) });
+    const d = await r.json();
+    if (d.ok) location.reload();
+    else alert('Error: ' + d.error);
+  }
+  async function saveCustom(id) {
+    const val = document.getElementById('custom_' + id).value;
+    const limit = parseInt(val);
+    if (!limit || limit < 1) { alert('Enter a valid MB amount'); return; }
+    const r = await fetch('/admin/setlimit', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ id, limit }) });
     const d = await r.json();
     if (d.ok) location.reload();
     else alert('Error: ' + d.error);
@@ -269,6 +311,14 @@ export default {
       const code = generateCode(8);
       await DB.prepare('UPDATE users SET status = ?, access_code = ? WHERE id = ?').bind('approved', code, id).run();
       return jsonResponse({ ok: true, code });
+    }
+
+    if (path === '/admin/setlimit' && method === 'POST') {
+      const adminToken = getCookie(request, 'mx_admin');
+      if (adminToken !== (env.ADMIN_PASS || ADMIN_PASS)) return jsonResponse({ error: 'Unauthorized' }, 401);
+      const { id, limit } = await request.json();
+      await DB.prepare('UPDATE users SET storage_limit_mb = ? WHERE id = ?').bind(limit, id).run();
+      return jsonResponse({ ok: true });
     }
 
     if (path === '/admin/delete' && method === 'POST') {
