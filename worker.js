@@ -50,7 +50,10 @@ async function getSession(request, DB) {
 
 // ---- Admin HTML ----
 function crownSvg(color, title) {
-  return `<svg title="${title}" width="22" height="22" viewBox="0 0 24 24" fill="${color}" xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle;cursor:pointer;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4))"><path d="M2 19h20v2H2v-2zm0-2l3-9 4.5 4.5L12 4l2.5 8.5L19 8l3 9H2z"/></svg>`;
+  return `<svg title="${title}" width="28" height="28" viewBox="0 0 100 80" fill="${color}" xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle;cursor:pointer;display:inline-block;">
+    <path d="M10 55 L10 30 L28 48 L50 10 L72 48 L90 30 L90 55 Z"/>
+    <rect x="10" y="60" width="80" height="14" rx="5"/>
+  </svg>`;
 }
 
 function crownIcon(limit) {
@@ -79,7 +82,7 @@ function adminHTML(users) {
         <span style="font-size:12px;color:#9a9186;margin-left:4px;">${limitLabel(u.storage_limit_mb, u.storage_used_mb)}</span>
       </td>
       <td style="text-align:center;">
-        <span onclick="cycleCrown(${u.id}, ${u.storage_limit_mb})" id="crown_${u.id}" title="Tap to change">
+        <span onclick="cycleCrown(${u.id}, '${u.storage_limit_mb}')" id="crown_${u.id}" title="Tap to change" style="cursor:pointer;">
           ${crownIcon(u.storage_limit_mb)}
         </span>
         ${u.storage_limit_mb > 0 ? `<br><input type="number" id="custom_${u.id}" value="${u.storage_limit_mb}" min="1" style="width:60px;background:#1a1816;color:#f2ede4;border:1px solid #3a352f;border-radius:4px;padding:4px;font-family:monospace;font-size:11px;margin-top:4px;">
@@ -132,7 +135,8 @@ function adminHTML(users) {
     else alert('Error: ' + d.error);
   }
   async function cycleCrown(id, current) {
-    // Cycle: 0 (red) → 1 (green, ask for MB) → -1 (gold) → 0
+    current = parseInt(current);
+    // Cycle: 0 (red) → green (ask MB) → -1 (gold) → 0 (red)
     let next;
     if (current === 0) next = 1;
     else if (current > 0) next = -1;
