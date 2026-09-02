@@ -1345,7 +1345,7 @@
 
   renderDeckCover();
 
-  // Media Session API — lock screen controls only, no extra audio contexts
+  // Media Session API
   function updateMediaSession(){
     if(!('mediaSession' in navigator)) return;
     const t = currentTrack();
@@ -1372,7 +1372,10 @@
 
   if('serviceWorker' in navigator){
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js').catch(()=>{ /* offline caching unavailable, app still works online */ });
+      // Unregister all service workers so auth gate is never bypassed by cache
+      navigator.serviceWorker.getRegistrations().then(regs => {
+        regs.forEach(r => r.unregister());
+      });
     });
   }
 </script>
