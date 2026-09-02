@@ -481,6 +481,14 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
 <script>
+  // Auth check — verify session with Worker on every load
+  (async function checkAuth(){
+    try{
+      const r = await fetch('/api/me');
+      if(r.status === 401) window.location.href = '/';
+    }catch(e){ /* network error, let it through */ }
+  })();
+
   const audio = document.getElementById('audio');
   const fileInput = document.getElementById('fileInput');
   const playlistEl = document.getElementById('playlistItems');

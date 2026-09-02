@@ -281,6 +281,12 @@ export default {
     }
 
     // ---- API routes ----
+    if (path === '/api/me') {
+      const session = await getSession(request, DB);
+      if (!session) return jsonResponse({ error: 'Unauthorized' }, 401);
+      return jsonResponse({ ok: true, name: session.name, email: session.email });
+    }
+
     if (path === '/api/signup' && method === 'POST') {
       const { name, email } = await request.json();
       if (!name || !email) return jsonResponse({ error: 'Name and email required' }, 400);
