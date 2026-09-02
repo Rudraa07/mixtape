@@ -377,7 +377,79 @@
     font-family:'JetBrains Mono', monospace;
   }
   .cover-edit-btn-tt:active{ opacity:0.6; }
+
+  /* Auth overlay */
+  #authOverlay{
+    position:fixed; inset:0; background:var(--bg); z-index:9999;
+    display:flex; align-items:center; justify-content:center; padding:20px;
+  }
+  #authOverlay.hidden{ display:none; }
+  .auth-card{
+    background:var(--panel); border:1px solid var(--line); border-radius:18px;
+    padding:28px 24px; width:100%; max-width:360px;
+  }
+  .auth-card h1{ font-size:24px; margin:0 0 4px; }
+  .auth-sub{ font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--muted); letter-spacing:1px; margin-bottom:24px; }
+  .auth-tabs{ display:flex; gap:8px; margin-bottom:20px; }
+  .auth-tab{ flex:1; padding:9px; border-radius:8px; border:1px solid var(--line); background:transparent; color:var(--muted); font-family:'JetBrains Mono',monospace; font-size:12px; cursor:pointer; }
+  .auth-tab.active{ background:var(--amber); border-color:var(--amber); color:var(--bg); font-weight:700; }
+  .auth-input{ display:block; width:100%; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px 12px; color:var(--cream); font-family:'JetBrains Mono',monospace; font-size:13px; margin-bottom:10px; }
+  .auth-btn{ display:block; width:100%; padding:12px; border-radius:8px; border:none; background:var(--amber); color:var(--bg); font-family:'JetBrains Mono',monospace; font-size:13px; font-weight:700; cursor:pointer; margin-top:4px; }
+  .auth-msg{ font-family:'JetBrains Mono',monospace; font-size:12px; margin-top:12px; text-align:center; min-height:18px; }
+  .auth-err{ color:var(--red); }
+  .auth-ok{ color:var(--teal); }
+  .auth-form{ display:none; }
+  .auth-form.active{ display:block; }
 </style>
+<script>
+// Kill any existing service worker and caches, then reload clean
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.getRegistrations().then(regs=>{
+    if(regs.length > 0){
+      Promise.all([
+        ...regs.map(r=>r.unregister()),
+        ...(window.caches ? [caches.keys().then(ks=>Promise.all(ks.map(k=>caches.delete(k))))] : [])
+      ]).then(()=>window.location.reload());
+    }
+  });
+}
+
+  // Auth overlay logic
+  function authShow(tab){
+    document.getElementById('authLoginForm').classList.toggle('active', tab==='login');
+    document.getElementById('authSignupForm').classList.toggle('active', tab==='signup');
+    document.querySelectorAll('.auth-tab').forEach((t,i)=>t.classList.toggle('active',(i===0)===(tab==='login')));
+  }
+  async function doAuthLogin(){
+    const email = document.getElementById('authEmail').value.trim();
+    const code = document.getElementById('authCode').value.trim().toUpperCase();
+    const msg = document.getElementById('authLoginMsg');
+    if(!email||!code){msg.textContent='Fill in both fields.';msg.className='auth-msg auth-err';return;}
+    const r = await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,code})});
+    const d = await r.json();
+    if(d.ok){document.getElementById('authOverlay').classList.add('hidden');}
+    else{msg.textContent=d.error||'Invalid credentials.';msg.className='auth-msg auth-err';}
+  }
+  async function doAuthSignup(){
+    const name = document.getElementById('authName').value.trim();
+    const email = document.getElementById('authSignupEmail').value.trim();
+    const msg = document.getElementById('authSignupMsg');
+    if(!name||!email){msg.textContent='Fill in both fields.';msg.className='auth-msg auth-err';return;}
+    const r = await fetch('/api/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,email})});
+    const d = await r.json();
+    if(d.ok){msg.textContent='Request sent! Wait for your access code.';msg.className='auth-msg auth-ok';}
+    else{msg.textContent=d.error||'Something went wrong.';msg.className='auth-msg auth-err';}
+  }
+
+  // Check auth on load — show overlay if not logged in
+  (async function checkAuth(){
+    try{
+      const r = await fetch('/api/me');
+      if(r.status===401) document.getElementById('authOverlay').classList.remove('hidden');
+    }catch(e){ /* network error — let through */ }
+  })();
+
+</script>
 </head>
 <body>
 <div class="app">
@@ -475,31 +547,36 @@
   </div>
 </div>
 
+
+<div id="authOverlay" class="hidden">
+  <div class="auth-card">
+    <h1>Mixtape</h1>
+    <div class="auth-sub">PRIVATE ACCESS</div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" onclick="authShow('login')">Login</button>
+      <button class="auth-tab" onclick="authShow('signup')">Sign up</button>
+    </div>
+    <div class="auth-form active" id="authLoginForm">
+      <input class="auth-input" type="email" id="authEmail" placeholder="Email">
+      <input class="auth-input" type="text" id="authCode" placeholder="Access code" style="text-transform:uppercase" maxlength="8">
+      <button class="auth-btn" onclick="doAuthLogin()">Enter</button>
+      <div class="auth-msg" id="authLoginMsg"></div>
+    </div>
+    <div class="auth-form" id="authSignupForm">
+      <input class="auth-input" type="text" id="authName" placeholder="Your name">
+      <input class="auth-input" type="email" id="authSignupEmail" placeholder="Email">
+      <button class="auth-btn" onclick="doAuthSignup()">Request access</button>
+      <div class="auth-msg" id="authSignupMsg"></div>
+    </div>
+  </div>
+</div>
+
 <div id="editOverlayContainer"></div>
 
 <audio id="audio"></audio>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
 <script>
-  // Auth check — verify session with Worker on every load
-  (async function checkAuth(){
-    try{
-      const r = await fetch('/api/me');
-      if(r.status === 401){
-        // Unregister SW so next load hits the Worker auth gate properly
-        if('serviceWorker' in navigator){
-          const regs = await navigator.serviceWorker.getRegistrations();
-          await Promise.all(regs.map(r => r.unregister()));
-        }
-        // Clear caches
-        const keys = await caches.keys();
-        await Promise.all(keys.map(k => caches.delete(k)));
-        // Now redirect — Worker will serve the login page
-        window.location.replace('/');
-      }
-    }catch(e){ /* network error, let it through */ }
-  })();
-
   const audio = document.getElementById('audio');
   const fileInput = document.getElementById('fileInput');
   const playlistEl = document.getElementById('playlistItems');
