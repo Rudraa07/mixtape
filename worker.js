@@ -77,16 +77,13 @@ function adminHTML(users) {
       <td>${new Date(u.created_at).toLocaleDateString()}</td>
       <td><span class="status ${u.status}">${u.status}</span></td>
       <td>${u.access_code || '—'}</td>
-      <td>
-        ${crownIcon(u.storage_limit_mb)}
-        <span style="font-size:12px;color:#9a9186;margin-left:4px;">${limitLabel(u.storage_limit_mb, u.storage_used_mb)}</span>
-      </td>
       <td style="text-align:center;">
-        <span onclick="cycleCrown(${u.id}, '${u.storage_limit_mb}')" id="crown_${u.id}" title="Tap to change" style="cursor:pointer;">
+        <div onclick="cycleCrown(${u.id}, '${u.storage_limit_mb}')" style="cursor:pointer;display:inline-block;">
           ${crownIcon(u.storage_limit_mb)}
-        </span>
-        ${u.storage_limit_mb > 0 ? `<br><input type="number" id="custom_${u.id}" value="${u.storage_limit_mb}" min="1" style="width:60px;background:#1a1816;color:#f2ede4;border:1px solid #3a352f;border-radius:4px;padding:4px;font-family:monospace;font-size:11px;margin-top:4px;">
-        <button onclick="saveCustom(${u.id})" style="padding:3px 7px;font-size:11px;">✓</button>` : ''}
+        </div>
+        <div style="font-size:11px;color:#9a9186;margin-top:2px;">${limitLabel(u.storage_limit_mb, u.storage_used_mb)}</div>
+        ${u.storage_limit_mb > 0 ? `<div style="margin-top:4px;"><input type="number" id="custom_${u.id}" value="${u.storage_limit_mb}" min="1" style="width:55px;background:#1a1816;color:#f2ede4;border:1px solid #3a352f;border-radius:4px;padding:3px;font-family:monospace;font-size:11px;">
+        <button onclick="saveCustom(${u.id})" style="padding:3px 7px;font-size:11px;">✓</button></div>` : ''}
       </td>
       <td>
         ${u.status === 'pending' ? `<button onclick="approve(${u.id})">Approve</button>` : ''}
