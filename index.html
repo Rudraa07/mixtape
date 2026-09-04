@@ -1506,12 +1506,14 @@
           });
           const data = await res.json();
           if(data.ok){ t.cloudKey = data.key; done++; }
-          else failed++;
-        } catch(e){ failed++; }
+          else { failed++; if(done+failed===1) window._uploadFirstError = data.error || 'Server rejected upload'; }
+        } catch(e){ failed++; if(done+failed===1) window._uploadFirstError = e.message; }
         btn.textContent = 'Uploading ' + (done+failed) + '/' + selected.length + '…';
       }
       closeEditPopup();
-      alert('Done! ' + done + ' uploaded' + (failed ? ', ' + failed + ' failed.' : '.'));
+      const errNote = window._uploadFirstError ? `\n\nFirst error: ${window._uploadFirstError}` : '';
+      window._uploadFirstError = null;
+      alert('Done! ' + done + ' uploaded' + (failed ? `, ${failed} failed.${errNote}` : '.'));
     });
   });
 
