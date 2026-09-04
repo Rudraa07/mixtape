@@ -1,6 +1,7 @@
 name = "mixtape"
 compatibility_date = "2025-01-01"
 main = "worker.js"
+no_bundle = true
 
 [assets]
 directory = "."
