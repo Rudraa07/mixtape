@@ -4,6 +4,11 @@
 
 const ADMIN_PASS = 'changeme123'; // override with a Worker secret in production
 
+function isAdminAuthed(request, env) {
+  const cookie = getCookie(request, 'mx_admin');
+  return cookie === 'authed';
+}
+
 function generateCode(length = 8) {
   const chars = '0123456789ABCDEFGHJKLMNPQRSTUVWXYZ';
   let code = '';
@@ -283,10 +288,7 @@ export default {
 
     // ---- Admin routes ----
     if (path === '/admin' || path === '/admin/') {
-      const adminToken = getCookie(request, 'mx_admin');
-      if (adminToken !== (env.ADMIN_PASS || ADMIN_PASS)) {
-        return Response.redirect(url.origin + '/admin/login', 302);
-      }
+      if (!isAdminAuthed(request, env)) return Response.redirect(url.origin + '/admin/login', 302);
       const { results } = await DB.prepare('SELECT * FROM users ORDER BY created_at DESC').all();
       return htmlResponse(adminHTML(results || []));
     }
@@ -302,7 +304,7 @@ export default {
           status: 302,
           headers: {
             'Location': '/admin',
-            'Set-Cookie': `mx_admin=${correct}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400`
+            'Set-Cookie': 'mx_admin=authed; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400'
           }
         });
       }
@@ -316,8 +318,7 @@ export default {
     }
 
     if (path === '/admin/approve' && method === 'POST') {
-      const adminToken = getCookie(request, 'mx_admin');
-      if (adminToken !== (env.ADMIN_PASS || ADMIN_PASS)) return jsonResponse({ error: 'Unauthorized' }, 401);
+      if (!isAdminAuthed(request, env)) return jsonResponse({ error: 'Unauthorized' }, 401);
       const { id } = await request.json();
       const code = generateCode(8);
       await DB.prepare('UPDATE users SET status = ?, access_code = ? WHERE id = ?').bind('approved', code, id).run();
@@ -325,16 +326,14 @@ export default {
     }
 
     if (path === '/admin/setlimit' && method === 'POST') {
-      const adminToken = getCookie(request, 'mx_admin');
-      if (adminToken !== (env.ADMIN_PASS || ADMIN_PASS)) return jsonResponse({ error: 'Unauthorized' }, 401);
+      if (!isAdminAuthed(request, env)) return jsonResponse({ error: 'Unauthorized' }, 401);
       const { id, limit } = await request.json();
       await DB.prepare('UPDATE users SET storage_limit_mb = ? WHERE id = ?').bind(limit, id).run();
       return jsonResponse({ ok: true });
     }
 
     if (path === '/admin/delete' && method === 'POST') {
-      const adminToken = getCookie(request, 'mx_admin');
-      if (adminToken !== (env.ADMIN_PASS || ADMIN_PASS)) return jsonResponse({ error: 'Unauthorized' }, 401);
+      if (!isAdminAuthed(request, env)) return jsonResponse({ error: 'Unauthorized' }, 401);
       const { id } = await request.json();
       await DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(id).run();
       await DB.prepare('DELETE FROM users WHERE id = ?').bind(id).run();
