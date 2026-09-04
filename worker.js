@@ -81,20 +81,23 @@ function adminHTML(users) {
         '<td>' + new Date(u.created_at).toLocaleDateString() + '</td>' +
         '<td><span class="status ' + u.status + '">' + u.status + '</span></td>' +
         '<td>' + (u.access_code || '—') + '</td>' +
-        '<td style="text-align:center;">' +
+        '<td style="text-align:center;" id="crown_' + u.id + '">' +
           crownIcon(u.storage_limit_mb) +
           '<br><small style="color:#9a9186;">' + limitLabel(u.storage_limit_mb, u.storage_used_mb) + '</small>' +
         '</td>' +
         '<td>' +
-          '<select onchange="setLimit(' + u.id + ', this.value)" style="background:#1a1816;color:#f2ede4;border:1px solid #3a352f;border-radius:4px;padding:4px;font-family:monospace;font-size:12px;margin-right:4px;">' +
-            '<option value="-1"' + (u.storage_limit_mb === -1 ? ' selected' : '') + '>Gold (Unlimited)</option>' +
+          '<select id="sel_' + u.id + '" onchange="setLimit(' + u.id + ', this.value)" style="background:#1a1816;color:#f2ede4;border:1px solid #3a352f;border-radius:4px;padding:4px;font-family:monospace;font-size:12px;margin-right:4px;">' +
             '<option value="0"' + (u.storage_limit_mb === 0 ? ' selected' : '') + '>Red (No access)</option>' +
             '<option value="custom"' + (u.storage_limit_mb > 0 ? ' selected' : '') + '>Green (Custom MB)</option>' +
+            '<option value="-1"' + (u.storage_limit_mb === -1 ? ' selected' : '') + '>Gold (Unlimited)</option>' +
           '</select>' +
-          (u.storage_limit_mb > 0 ? '<input type="number" id="custom_' + u.id + '" value="' + u.storage_limit_mb + '" min="1" style="width:60px;background:#1a1816;color:#f2ede4;border:1px solid #3a352f;border-radius:4px;padding:4px;font-family:monospace;font-size:12px;"><button onclick="saveCustom(' + u.id + ')" style="padding:4px 8px;">✓</button>' : '') +
           '<br style="margin:4px 0">' +
           approveBtn +
           '<button onclick="del(' + u.id + ')" class="del">Delete</button>' +
+        '</td>' +
+        '<td id="customcol_' + u.id + '" style="' + (u.storage_limit_mb > 0 ? '' : 'display:none;') + '">' +
+          '<input type="number" id="custom_' + u.id + '" value="' + (u.storage_limit_mb > 0 ? u.storage_limit_mb : '') + '" min="1" placeholder="MB" style="width:70px;background:#1a1816;color:#f2ede4;border:1px solid #3a352f;border-radius:4px;padding:4px;font-family:monospace;font-size:12px;">' +
+          '<button onclick="saveCustom(' + u.id + ')" style="padding:4px 8px;">✓</button>' +
         '</td>' +
         '</tr>';
     }
@@ -112,12 +115,12 @@ function adminHTML(users) {
     '.logout{float:right;background:#3a352f;color:#9a9186;}' +
     '</style></head><body>' +
     '<h1>Mixtape Admin <button class="logout" onclick="location.href=\'/admin/logout\'">Logout</button></h1>' +
-    '<table><thead><tr><th>#</th><th>Name</th><th>Email</th><th>Signed up</th><th>Status</th><th>Code</th><th>Storage</th><th>Actions</th></tr></thead>' +
+    '<table><thead><tr><th>#</th><th>Name</th><th>Email</th><th>Signed up</th><th>Status</th><th>Code</th><th>Storage</th><th>Limit</th><th>Custom MB</th></tr></thead>' +
     '<tbody>' + rows + '</tbody></table>' +
     '<script>' +
     'async function approve(id){const r=await fetch("/admin/approve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id})});const d=await r.json();if(d.code){alert("Approved!\\nCode: "+d.code);location.reload();}else alert("Error: "+(d.error||"Unknown"));}' +
     'async function del(id){if(!confirm("Delete this user?"))return;const r=await fetch("/admin/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id})});const d=await r.json();if(d.ok)location.reload();else alert("Error: "+(d.error||"Unknown"));}' +
-    'async function setLimit(id,value){if(value==="custom")return;const limit=parseInt(value);const r=await fetch("/admin/setlimit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,limit})});const d=await r.json();if(d.ok)location.reload();else alert("Error: "+(d.error||"Unknown"));}' +
+    'async function setLimit(id,value){const customCol=document.getElementById("customcol_"+id);if(value==="custom"){if(customCol)customCol.style.display="";return;}if(customCol)customCol.style.display="none";const limit=parseInt(value);const r=await fetch("/admin/setlimit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,limit})});const d=await r.json();if(d.ok){const crown=document.getElementById("crown_"+id);if(crown){const colors={"-1":"#e8a33d","0":"#c1443c"};const labels={"-1":"Unlimited","0":"No access"};const c=colors[String(limit)]||"#4a8c8c";crown.innerHTML='<svg width="24" height="24" viewBox="0 0 100 80" fill="'+c+'" xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle;"><path d="M10 55 L10 30 L28 48 L50 10 L72 48 L90 30 L90 55 Z"/><rect x="10" y="60" width="80" height="14" rx="5"/></svg><br><small style=\"color:#9a9186;\">'+( labels[String(limit)]||"Custom")+'</small>';}}else alert("Error: "+(d.error||"Unknown"));}' +
     'async function saveCustom(id){const val=document.getElementById("custom_"+id).value;const limit=parseInt(val);if(!limit||limit<1){alert("Enter a valid MB amount");return;}const r=await fetch("/admin/setlimit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,limit})});const d=await r.json();if(d.ok)location.reload();else alert("Error: "+(d.error||"Unknown"));}' +
     '<\/script></body></html>';
 }
