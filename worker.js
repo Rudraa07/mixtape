@@ -74,28 +74,40 @@ function limitLabel(limit, used) {
 }
 
 function adminHTML(users) {
-  const rows = users.map(u => `
-    <tr>
-      <td>${u.id}</td>
-      <td>${u.name}</td>
-      <td>${u.email}</td>
-      <td>${new Date(u.created_at).toLocaleDateString()}</td>
-      <td><span class="status ${u.status}">${u.status}</span></td>
-      <td>${u.access_code || '—'}</td>
-      <td style="text-align:center;">
-        <div onclick="cycleCrown(${u.id}, '${u.storage_limit_mb}')" style="cursor:pointer;display:inline-block;">
-          ${crownIcon(u.storage_limit_mb)}
-        </div>
-        <div style="font-size:11px;color:#9a9186;margin-top:2px;">${limitLabel(u.storage_limit_mb, u.storage_used_mb)}</div>
-        ${u.storage_limit_mb > 0 ? `<div style="margin-top:4px;"><input type="number" id="custom_${u.id}" value="${u.storage_limit_mb}" min="1" style="width:55px;background:#1a1816;color:#f2ede4;border:1px solid #3a352f;border-radius:4px;padding:3px;font-family:monospace;font-size:11px;">
-        <button onclick="saveCustom(${u.id})" style="padding:3px 7px;font-size:11px;">✓</button></div>` : ''}
-      </td>
-      <td>
-        ${u.status === 'pending' ? `<button onclick="approve(${u.id})">Approve</button>` : ''}
-        <button onclick="del(${u.id})" class="del">Delete</button>
-      </td>
-    </tr>
-  `).join('');
+  let rows = '';
+  if (!users || users.length === 0) {
+    rows = '<tr><td colspan="9" style="text-align:center;color:#9a9186;">No users yet</td></tr>';
+  } else {
+    for (const u of users) {
+      const crown = crownIcon(u.storage_limit_mb);
+      const label = limitLabel(u.storage_limit_mb, u.storage_used_mb);
+      const statusSpan = '<span class="status ' + u.status + '">' + u.status + '</span>';
+      const code = u.access_code || '—';
+      const date = new Date(u.created_at).toLocaleDateString();
+      let customInput = '';
+      if (u.storage_limit_mb > 0) {
+        customInput = '<div style="margin-top:4px;"><input type="number" id="custom_' + u.id + '" value="' + u.storage_limit_mb + '" min="1" style="width:55px;background:#1a1816;color:#f2ede4;border:1px solid #3a352f;border-radius:4px;padding:3px;font-family:monospace;font-size:11px;"><button onclick="saveCustom(' + u.id + ')" style="padding:3px 7px;font-size:11px;">✓</button></div>';
+      }
+      let approveBtn = '';
+      if (u.status === 'pending') {
+        approveBtn = '<button onclick="approve(' + u.id + ')">Approve</button>';
+      }
+      rows += '<tr>' +
+        '<td>' + u.id + '</td>' +
+        '<td>' + u.name + '</td>' +
+        '<td>' + u.email + '</td>' +
+        '<td>' + date + '</td>' +
+        '<td>' + statusSpan + '</td>' +
+        '<td>' + code + '</td>' +
+        '<td style="text-align:center;">' +
+          '<div onclick="cycleCrown(' + u.id + ', ' + u.storage_limit_mb + ')" style="cursor:pointer;display:inline-block;">' + crown + '</div>' +
+          '<div style="font-size:11px;color:#9a9186;margin-top:2px;">' + label + '</div>' +
+          customInput +
+        '</td>' +
+        '<td>' + approveBtn + '<button onclick="del(' + u.id + ')" class="del">Delete</button></td>' +
+        '</tr>';
+    }
+  }
 
   return `<!DOCTYPE html>
 <html>
@@ -119,26 +131,25 @@ function adminHTML(users) {
 <body>
 <h1>Mixtape Admin <button class="logout" onclick="location.href='/admin/logout'">Logout</button></h1>
 <table>
-  <thead><tr><th>#</th><th>Name</th><th>Email</th><th>Signed up</th><th>Status</th><th>Code</th><th>Storage</th><th>Limit</th><th>Actions</th></tr></thead>
-  <tbody>${rows || '<tr><td colspan="9" style="text-align:center;color:#9a9186;">No users yet</td></tr>'}</tbody>
+  <thead><tr><th>#</th><th>Name</th><th>Email</th><th>Signed up</th><th>Status</th><th>Code</th><th>Storage</th><th>Actions</th></tr></thead>
+  <tbody>${rows}</tbody>
 </table>
 <script>
   async function approve(id) {
     const r = await fetch('/admin/approve', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ id }) });
     const d = await r.json();
     if (d.code) { alert('Approved!\nCode: ' + d.code); location.reload(); }
-    else alert('Error: ' + d.error);
+    else alert('Error: ' + (d.error || 'Unknown'));
   }
   async function del(id) {
     if (!confirm('Delete this user?')) return;
     const r = await fetch('/admin/delete', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ id }) });
     const d = await r.json();
     if (d.ok) location.reload();
-    else alert('Error: ' + d.error);
+    else alert('Error: ' + (d.error || 'Unknown'));
   }
   async function cycleCrown(id, current) {
     current = parseInt(current);
-    // Cycle: 0 (red) → green (ask MB) → -1 (gold) → 0 (red)
     let next;
     if (current === 0) next = 1;
     else if (current > 0) next = -1;
@@ -151,7 +162,7 @@ function adminHTML(users) {
     const r = await fetch('/admin/setlimit', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ id, limit: next }) });
     const d = await r.json();
     if (d.ok) location.reload();
-    else alert('Error: ' + d.error);
+    else alert('Error: ' + (d.error || 'Unknown'));
   }
   async function saveCustom(id) {
     const val = document.getElementById('custom_' + id).value;
@@ -160,98 +171,13 @@ function adminHTML(users) {
     const r = await fetch('/admin/setlimit', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ id, limit }) });
     const d = await r.json();
     if (d.ok) location.reload();
-    else alert('Error: ' + d.error);
+    else alert('Error: ' + (d.error || 'Unknown'));
   }
 </script>
 </body>
 </html>`;
 }
 
-// ---- Auth HTML (login/signup screen) ----
-const AUTH_HTML = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>Mixtape</title>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');
-  :root { --bg:#1a1816; --panel:#221f1c; --amber:#e8a33d; --teal:#4a8c8c; --cream:#f2ede4; --red:#c1443c; --line:#3a352f; --muted:#9a9186; }
-  * { box-sizing: border-box; }
-  body { background: var(--bg); color: var(--cream); font-family: 'Space Grotesk', sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 28px 24px; width: 100%; max-width: 360px; }
-  h1 { font-size: 24px; margin: 0 0 4px; }
-  .sub { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); letter-spacing: 1px; margin-bottom: 24px; }
-  .tabs { display: flex; gap: 8px; margin-bottom: 20px; }
-  .tab { flex: 1; padding: 9px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--muted); font-family: 'JetBrains Mono', monospace; font-size: 12px; cursor: pointer; }
-  .tab.active { background: var(--amber); border-color: var(--amber); color: var(--bg); font-weight: 700; }
-  input { display: block; width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; color: var(--cream); font-family: 'JetBrains Mono', monospace; font-size: 13px; margin-bottom: 10px; }
-  .btn { display: block; width: 100%; padding: 12px; border-radius: 8px; border: none; background: var(--amber); color: var(--bg); font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; cursor: pointer; margin-top: 4px; }
-  .btn:active { opacity: 0.7; }
-  .msg { font-family: 'JetBrains Mono', monospace; font-size: 12px; margin-top: 12px; text-align: center; min-height: 18px; }
-  .err { color: var(--red); }
-  .ok { color: var(--teal); }
-  .form { display: none; }
-  .form.active { display: block; }
-</style>
-</head>
-<body>
-<div class="card">
-  <h1>Mixtape</h1>
-  <div class="sub">PRIVATE ACCESS</div>
-  <div class="tabs">
-    <button class="tab active" onclick="show('login')">Login</button>
-    <button class="tab" onclick="show('signup')">Sign up</button>
-  </div>
-
-  <div class="form active" id="loginForm">
-    <input type="email" id="loginEmail" placeholder="Email">
-    <input type="text" id="loginCode" placeholder="Access code" style="text-transform:uppercase" maxlength="8">
-    <button class="btn" onclick="doLogin()">Enter</button>
-    <div class="msg" id="loginMsg"></div>
-  </div>
-
-  <div class="form" id="signupForm">
-    <input type="text" id="signupName" placeholder="Your name">
-    <input type="email" id="signupEmail" placeholder="Email">
-    <button class="btn" onclick="doSignup()">Request access</button>
-    <div class="msg" id="signupMsg"></div>
-  </div>
-</div>
-<script>
-  function show(tab) {
-    document.getElementById('loginForm').classList.toggle('active', tab === 'login');
-    document.getElementById('signupForm').classList.toggle('active', tab === 'signup');
-    document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', (i === 0) === (tab === 'login')));
-  }
-  async function doLogin() {
-    const email = document.getElementById('loginEmail').value.trim();
-    const code = document.getElementById('loginCode').value.trim().toUpperCase();
-    const msg = document.getElementById('loginMsg');
-    msg.textContent = '';
-    if (!email || !code) { msg.textContent = 'Fill in both fields.'; msg.className = 'msg err'; return; }
-    const r = await fetch('/api/login', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ email, code }) });
-    const d = await r.json();
-    if (d.ok) { location.reload(); }
-    else { msg.textContent = d.error || 'Invalid credentials.'; msg.className = 'msg err'; }
-  }
-  async function doSignup() {
-    const name = document.getElementById('signupName').value.trim();
-    const email = document.getElementById('signupEmail').value.trim();
-    const msg = document.getElementById('signupMsg');
-    msg.textContent = '';
-    if (!name || !email) { msg.textContent = 'Fill in both fields.'; msg.className = 'msg err'; return; }
-    const r = await fetch('/api/signup', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name, email }) });
-    const d = await r.json();
-    if (d.ok) { msg.textContent = 'Request sent! Wait for your access code.'; msg.className = 'msg ok'; }
-    else { msg.textContent = d.error || 'Something went wrong.'; msg.className = 'msg err'; }
-  }
-  document.addEventListener('keydown', e => { if (e.key === 'Enter') { document.getElementById('loginForm').classList.contains('active') ? doLogin() : doSignup(); } });
-</script>
-</body>
-</html>`;
-
-// ---- Admin login HTML ----
 const ADMIN_LOGIN_HTML = `<!DOCTYPE html>
 <html>
 <head>
