@@ -521,80 +521,104 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js">
   // ---- Cloud sync (R2) ----
-  const cloudUploadBtn = document.getElementById('cloudUploadBtn');
-  const cloudFilesBtn = document.getElementById('cloudFilesBtn');
+  document.getElementById('cloudUploadBtn').addEventListener('click', ()=>{
+    if(tracks.length === 0){ alert('Add some tracks to the playlist first.'); return; }
+    // Build checkbox list of all tracks
+    const itemsHtml = tracks.map((t,i) => `
+      <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);">
+        <input type="checkbox" id="ck_${t.id}" value="${t.id}" style="width:16px;height:16px;accent-color:var(--amber);cursor:pointer;">
+        <label for="ck_${t.id}" style="font-size:14px;cursor:pointer;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.name}</label>
+      </div>
+    `).join('');
 
-  cloudUploadBtn.addEventListener('click', ()=>{
-    if(tracks.length === 0){ alert('Add some tracks first.'); return; }
-    const t = currentTrack();
-    if(!t){ alert('Select a track first.'); return; }
-    // Upload current track to R2
-    uploadTrackToCloud(t);
+    editOverlayContainer.innerHTML = `
+      <div class="edit-overlay" id="cloudUploadBackdrop">
+        <div class="edit-panel" style="max-width:380px;">
+          <div class="edit-panel-title">Upload to cloud</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);">Select tracks to upload</span>
+            <button id="selectAllBtn" style="background:none;border:none;color:var(--teal);font-family:'JetBrains Mono',monospace;font-size:11px;cursor:pointer;text-decoration:underline;">Select all</button>
+          </div>
+          <div style="max-height:300px;overflow-y:auto;margin-bottom:12px;">${itemsHtml}</div>
+          <button class="add-repeat-btn" id="doUploadBtn">☁️ Upload selected</button>
+          <button class="edit-panel-close" id="cloudUploadClose">Cancel</button>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('cloudUploadBackdrop').addEventListener('click', e=>{ if(e.target.id==='cloudUploadBackdrop') closeEditPopup(); });
+    document.getElementById('cloudUploadClose').addEventListener('click', closeEditPopup);
+
+    let allSelected = false;
+    document.getElementById('selectAllBtn').addEventListener('click', ()=>{
+      allSelected = !allSelected;
+      document.querySelectorAll('#cloudUploadBackdrop input[type=checkbox]').forEach(cb => cb.checked = allSelected);
+      document.getElementById('selectAllBtn').textContent = allSelected ? 'Deselect all' : 'Select all';
+    });
+
+    document.getElementById('doUploadBtn').addEventListener('click', async ()=>{
+      const checked = [...document.querySelectorAll('#cloudUploadBackdrop input[type=checkbox]:checked')].map(cb => cb.value);
+      if(checked.length === 0){ alert('Select at least one track.'); return; }
+      const selected = tracks.filter(t => checked.includes(t.id));
+      const btn = document.getElementById('doUploadBtn');
+      btn.textContent = 'Uploading 0/' + selected.length + '…';
+      btn.style.pointerEvents = 'none';
+      let done = 0, failed = 0;
+      for(const t of selected){
+        try{
+          const blob = await fetch(t.url).then(r => r.blob());
+          const fileName = encodeURIComponent(t.name + '.mp3');
+          const res = await fetch('/api/upload', {
+            method: 'POST',
+            headers: {
+              'Content-Type': blob.type || 'audio/mpeg',
+              'X-File-Name': fileName
+            },
+            body: blob
+          });
+          const data = await res.json();
+          if(data.ok){ t.cloudKey = data.key; done++; }
+          else failed++;
+        } catch(e){ failed++; }
+        btn.textContent = 'Uploading ' + (done+failed) + '/' + selected.length + '…';
+      }
+      closeEditPopup();
+      alert('Done! ' + done + ' uploaded' + (failed ? ', ' + failed + ' failed.' : '.'));
+    });
   });
 
-  async function uploadTrackToCloud(t){
-    cloudUploadBtn.textContent = 'Uploading…';
-    cloudUploadBtn.style.pointerEvents = 'none';
-    try{
-      const blob = await fetch(t.url).then(r => r.blob());
-      const fileName = t.name + '.mp3';
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        headers: {
-          'Content-Type': blob.type || 'audio/mpeg',
-          'Content-Length': blob.size,
-          'X-File-Name': encodeURIComponent(fileName)
-        },
-        body: blob
-      });
-      const data = await res.json();
-      if(data.ok){
-        t.cloudKey = data.key;
-        alert('Uploaded: ' + t.name);
-      } else {
-        alert('Upload failed: ' + (data.error || 'Unknown error'));
-      }
-    } catch(e){
-      alert('Upload failed: ' + e.message);
-    }
-    cloudUploadBtn.textContent = '☁️ Upload to cloud';
-    cloudUploadBtn.style.pointerEvents = '';
-  }
-
-  cloudFilesBtn.addEventListener('click', async ()=>{
-    cloudFilesBtn.textContent = 'Loading…';
+  document.getElementById('cloudFilesBtn').addEventListener('click', async ()=>{
+    const btn = document.getElementById('cloudFilesBtn');
+    btn.textContent = 'Loading…';
     try{
       const res = await fetch('/api/files');
       const data = await res.json();
-      if(!data.ok){ alert('Could not load files: ' + (data.error || 'Unknown')); cloudFilesBtn.textContent = '📡 My cloud files'; return; }
-      const files = data.files;
-      if(files.length === 0){
-        editOverlayContainer.innerHTML = '<div class="edit-overlay" id="cloudOverlayBackdrop"><div class="edit-panel"><div class="edit-panel-title">Cloud files</div><div class="saved-list-empty">No files uploaded yet.</div><button class="edit-panel-close" id="cloudOverlayClose">Close</button></div></div>';
-        document.getElementById('cloudOverlayBackdrop').addEventListener('click', e=>{ if(e.target.id==='cloudOverlayBackdrop') closeEditPopup(); });
-        document.getElementById('cloudOverlayClose').addEventListener('click', closeEditPopup);
-        cloudFilesBtn.textContent = '📡 My cloud files';
-        return;
-      }
-      const itemsHtml = files.map(f => `
-        <div class="saved-list-item">
-          <div>
-            <div class="saved-list-name">${f.name}</div>
-            <div class="saved-list-meta">${(f.size/1024/1024).toFixed(1)} MB</div>
+      btn.textContent = '📡 My cloud files';
+      if(!data.ok){ alert('Could not load files: ' + (data.error || 'Unknown')); return; }
+      const files = data.files || [];
+      const itemsHtml = files.length === 0
+        ? '<div class="saved-list-empty">No files uploaded yet.</div>'
+        : files.map(f => `
+          <div class="saved-list-item">
+            <div style="min-width:0;">
+              <div class="saved-list-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${f.name}</div>
+              <div class="saved-list-meta">${(f.size/1024/1024).toFixed(1)} MB</div>
+            </div>
+            <button class="jamendo-add-btn" data-cloudkey="${encodeURIComponent(f.key)}" data-cloudname="${f.name}">+ Add</button>
           </div>
-          <button class="jamendo-add-btn" data-cloudkey="${encodeURIComponent(f.key)}" data-cloudname="${f.name}">+ Add</button>
-        </div>
-      `).join('');
+        `).join('');
+
       editOverlayContainer.innerHTML = `
-        <div class="edit-overlay" id="cloudOverlayBackdrop">
-          <div class="edit-panel">
-            <div class="edit-panel-title">Cloud files</div>
-            ${itemsHtml}
-            <button class="edit-panel-close" id="cloudOverlayClose">Close</button>
+        <div class="edit-overlay" id="cloudFilesBackdrop">
+          <div class="edit-panel" style="max-width:380px;">
+            <div class="edit-panel-title">My cloud files</div>
+            <div style="max-height:360px;overflow-y:auto;">${itemsHtml}</div>
+            <button class="edit-panel-close" id="cloudFilesClose">Close</button>
           </div>
         </div>
       `;
-      document.getElementById('cloudOverlayBackdrop').addEventListener('click', e=>{ if(e.target.id==='cloudOverlayBackdrop') closeEditPopup(); });
-      document.getElementById('cloudOverlayClose').addEventListener('click', closeEditPopup);
+      document.getElementById('cloudFilesBackdrop').addEventListener('click', e=>{ if(e.target.id==='cloudFilesBackdrop') closeEditPopup(); });
+      document.getElementById('cloudFilesClose').addEventListener('click', closeEditPopup);
       editOverlayContainer.querySelectorAll('[data-cloudkey]').forEach(btn=>{
         btn.addEventListener('click', ()=>{
           const key = decodeURIComponent(btn.dataset.cloudkey);
@@ -602,16 +626,12 @@
           const url = '/api/file/' + encodeURIComponent(key);
           const seq = idCounter++;
           tracks.push({
-            id: 't' + seq,
-            order: seq,
+            id: 't' + seq, order: seq,
             name: name.replace(/\.mp3$/i,''),
-            artist: '',
-            url,
+            artist: '', url,
             plays: [{speed:1}],
             pendingSpeed:1, pendingCount:1, pendingCustomActive:false, pendingCustomValue:2,
-            coverUrl: null,
-            skipOnce: false,
-            cloudKey: key
+            coverUrl: null, skipOnce: false, cloudKey: key
           });
           renderPlaylist();
           if(currentTrackIndex === -1) loadTrack(0, 0, false);
@@ -620,9 +640,9 @@
         });
       });
     } catch(e){
+      btn.textContent = '📡 My cloud files';
       alert('Error: ' + e.message);
     }
-    cloudFilesBtn.textContent = '📡 My cloud files';
   });
 
 </script>
