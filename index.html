@@ -395,7 +395,7 @@
 </head>
 <body>
 <div class="app">
-  <h1>Mixtape <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.23</span></h1>
+  <h1>Mixtape <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.24</span></h1>
 
   <div class="deck">
     <div class="style-toggle">
@@ -787,11 +787,12 @@
     currentPlayIndex = playIndex || 0;
     const t = tracks[index];
     audio.src = t.url;
+    audio.load();
     audio.playbackRate = t.plays[currentPlayIndex].speed;
     trackTitle.textContent = t.name;
     document.getElementById('trackArtist').textContent = t.artist || '';
     updateStatus();
-    if(typeof updateMediaSession === 'function') updateMediaSession();
+    updateMediaSession();
     renderPlaylist();
     renderDeckCover();
     if(autoplay){ audio.play(); }
@@ -1393,14 +1394,16 @@
     navigator.mediaSession.metadata = new MediaMetadata({
       title: t ? t.name : 'Mixtape',
       artist: t ? (t.artist || '') : '',
-      artwork: t && t.coverUrl ? [{ src: t.coverUrl }] : []
+      artwork: t && t.coverUrl ? [{ src: t.coverUrl, sizes: '512x512', type: 'image/jpeg' }] : []
     });
+    navigator.mediaSession.playbackState = audio.paused ? 'paused' : 'playing';
   }
   if('mediaSession' in navigator){
     navigator.mediaSession.setActionHandler('play', ()=>{ audio.play(); });
     navigator.mediaSession.setActionHandler('pause', ()=>{ audio.pause(); });
     navigator.mediaSession.setActionHandler('previoustrack', ()=>{ const i = prevPlayableIndex(currentTrackIndex); if(i !== -1) loadTrack(i, 0, true); });
     navigator.mediaSession.setActionHandler('nexttrack', ()=>{ const i = nextPlayableIndex(currentTrackIndex); if(i !== -1) loadTrack(i, 0, true); });
+    navigator.mediaSession.setActionHandler('stop', ()=>{ audio.pause(); audio.currentTime = 0; });
   }
   audio.addEventListener('play', updateMediaSession);
   audio.addEventListener('pause', updateMediaSession);
@@ -1446,9 +1449,10 @@
 
   // ---- Cloud sync (R2) ----
   document.getElementById('cloudUploadBtn').addEventListener('click', ()=>{
-    if(tracks.length === 0){ alert('Add some tracks to the playlist first.'); return; }
     // Build checkbox list of all tracks
-    const itemsHtml = tracks.map((t,i) => `
+    const itemsHtml = tracks.length === 0
+      ? '<div class="saved-list-empty">Add some tracks to the playlist first.</div>'
+      : tracks.map((t,i) => `
       <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);">
         <input type="checkbox" id="ck_${t.id}" value="${t.id}" style="width:16px;height:16px;accent-color:var(--amber);cursor:pointer;">
         <label for="ck_${t.id}" style="font-size:14px;cursor:pointer;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.name}</label>
