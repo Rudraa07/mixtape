@@ -541,6 +541,12 @@
   const liveSpeedRow = document.getElementById('liveSpeedRow');
 
   const ICON_PLAY = '<path d="M8 5v14l11-7z"/>';
+
+  function authHeaders(extra) {
+    const headers = Object.assign({}, extra || {});
+    try{ const t = localStorage.getItem('mx_token'); if(t) headers['Authorization'] = 'Bearer ' + t; }catch(e){}
+    return headers;
+  }
   const ICON_PAUSE = '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>';
   const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
 
@@ -1420,7 +1426,10 @@
     if(!email||!code){msg.textContent='Fill in both fields.';msg.className='auth-msg auth-err';return;}
     const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,code})});
     const d=await r.json();
-    if(d.ok){document.getElementById('authOverlay').classList.add('hidden');}
+    if(d.ok){
+      if(d.token){ try{ localStorage.setItem('mx_token', d.token); }catch(e){} }
+      document.getElementById('authOverlay').classList.add('hidden');
+    }
     else{msg.textContent=d.error||'Invalid credentials.';msg.className='auth-msg auth-err';}
   }
   async function doAuthSignup(){
@@ -1501,10 +1510,10 @@
           const res = await fetch('/api/upload', {
             method: 'POST',
             credentials: 'same-origin',
-            headers: {
+            headers: authHeaders({
               'Content-Type': blob.type || 'audio/mpeg',
               'X-File-Name': fileName
-            },
+            }),
             body: blob
           });
           const ct = res.headers.get('content-type') || '';

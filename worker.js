@@ -40,7 +40,11 @@ function isAdminAuthed(request) {
 }
 
 async function getSession(request, DB) {
-  const token = getCookie(request, "mx_session");
+  let token = getCookie(request, "mx_session");
+  if (!token) {
+    const auth = request.headers.get("Authorization") || "";
+    if (auth.startsWith("Bearer ")) token = auth.slice(7).trim();
+  }
   if (!token) return null;
   const row = await DB.prepare(
     "SELECT u.id, u.email, u.name, u.status FROM sessions s JOIN users u ON s.user_id = u.id WHERE s.token = ?"
@@ -199,7 +203,7 @@ export default {
       if (!user) return jsonResponse({ error: "Invalid email or code" }, 401);
       const token = generateToken();
       await DB.prepare("INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)").bind(token, user.id, Date.now()).run();
-      return new Response(JSON.stringify({ ok: true }), {
+      return new Response(JSON.stringify({ ok: true, token }), {
         status: 200,
         headers: { "Content-Type": "application/json", "Set-Cookie": "mx_session=" + token + "; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000" },
       });
