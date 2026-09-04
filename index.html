@@ -1498,15 +1498,22 @@
           const fileName = encodeURIComponent(t.name + '.mp3');
           const res = await fetch('/api/upload', {
             method: 'POST',
+            credentials: 'same-origin',
             headers: {
               'Content-Type': blob.type || 'audio/mpeg',
               'X-File-Name': fileName
             },
             body: blob
           });
-          const data = await res.json();
-          if(data.ok){ t.cloudKey = data.key; done++; }
-          else { failed++; if(done+failed===1) window._uploadFirstError = data.error || 'Server rejected upload'; }
+          const ct = res.headers.get('content-type') || '';
+          if(ct.includes('text/html')){
+            failed++;
+            window._uploadFirstError = window._uploadFirstError || 'Session expired — refresh and log in again';
+          } else {
+            const data = await res.json();
+            if(data.ok){ t.cloudKey = data.key; done++; }
+            else { failed++; window._uploadFirstError = window._uploadFirstError || (data.error || 'Server rejected upload'); }
+          }
         } catch(e){ failed++; if(done+failed===1) window._uploadFirstError = e.message; }
         btn.textContent = 'Uploading ' + (done+failed) + '/' + selected.length + '…';
       }
