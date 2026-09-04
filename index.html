@@ -1494,7 +1494,9 @@
       let done = 0, failed = 0;
       for(const t of selected){
         try{
-          const blob = await fetch(t.url).then(r => r.blob());
+          let blob;
+          try{ blob = await fetch(t.url).then(r => { if(!r.ok) throw new Error('blob fetch '+r.status); return r.blob(); }); }
+          catch(blobErr){ failed++; window._uploadFirstError = window._uploadFirstError || 'Track "'+t.name+'" file is no longer accessible — re-add it without refreshing the page first'; btn.textContent = 'Uploading '+(done+failed)+'/'+selected.length+'…'; continue; }
           const fileName = encodeURIComponent(t.name + '.mp3');
           const res = await fetch('/api/upload', {
             method: 'POST',
@@ -1514,7 +1516,7 @@
             if(data.ok){ t.cloudKey = data.key; done++; }
             else { failed++; window._uploadFirstError = window._uploadFirstError || (data.error || 'Server rejected upload'); }
           }
-        } catch(e){ failed++; if(done+failed===1) window._uploadFirstError = e.message; }
+        } catch(e){ failed++; window._uploadFirstError = window._uploadFirstError || e.message; }
         btn.textContent = 'Uploading ' + (done+failed) + '/' + selected.length + '…';
       }
       closeEditPopup();
