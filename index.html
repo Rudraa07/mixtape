@@ -1444,7 +1444,9 @@
   }
   (async function checkAuth(){
     try{
-      const r=await fetch('/api/me');
+      let token=''; try{ token=localStorage.getItem('mx_token')||''; }catch(e){}
+      const headers={}; if(token) headers['Authorization']='Bearer '+token;
+      const r=await fetch('/api/me',{headers});
       if(r.status===401) document.getElementById('authOverlay').classList.remove('hidden');
     }catch(e){}
   })();

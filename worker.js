@@ -106,7 +106,7 @@ var AUTH_SCRIPT = [
   'if(!email||!code){msg.textContent="Fill in both fields.";msg.className="msg err";return;}',
   'const r=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,code})});',
   'const d=await r.json();',
-  'if(d.ok){location.reload();}',
+  'if(d.ok){try{localStorage.setItem("mx_token",d.token);}catch(e){}location.reload();}',
   'else{msg.textContent=d.error||"Invalid credentials.";msg.className="msg err";}',
   '}',
   'async function doSignup(){',
