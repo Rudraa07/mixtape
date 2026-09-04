@@ -1509,6 +1509,8 @@
           try{ blob = await fetch(t.url).then(r => { if(!r.ok) throw new Error('blob fetch '+r.status); return r.blob(); }); }
           catch(blobErr){ failed++; window._uploadFirstError = window._uploadFirstError || 'Track "'+t.name+'" file is no longer accessible — re-add it without refreshing the page first'; btn.textContent = 'Uploading '+(done+failed)+'/'+selected.length+'…'; continue; }
           const fileName = encodeURIComponent(t.name + '.mp3');
+          let _tok=''; try{_tok=localStorage.getItem('mx_token')||'';}catch(e){}
+          if(!_tok){ failed++; window._uploadFirstError=window._uploadFirstError||'No auth token in localStorage — please log out and log in again'; btn.textContent='Uploading '+(done+failed)+'/'+selected.length+'…'; continue; }
           const res = await fetch('/api/upload', {
             method: 'POST',
             credentials: 'same-origin',
