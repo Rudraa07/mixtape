@@ -378,16 +378,9 @@
   }
   .cover-edit-btn-tt:active{ opacity:0.6; }
 
-  /* Auth overlay */
-  #authOverlay{
-    position:fixed; inset:0; background:var(--bg); z-index:9999;
-    display:flex; align-items:center; justify-content:center; padding:20px;
-  }
+  #authOverlay{ position:fixed; inset:0; background:var(--bg); z-index:9999; display:flex; align-items:center; justify-content:center; padding:20px; }
   #authOverlay.hidden{ display:none; }
-  .auth-card{
-    background:var(--panel); border:1px solid var(--line); border-radius:18px;
-    padding:28px 24px; width:100%; max-width:360px;
-  }
+  .auth-card{ background:var(--panel); border:1px solid var(--line); border-radius:18px; padding:28px 24px; width:100%; max-width:360px; }
   .auth-card h1{ font-size:24px; margin:0 0 4px; }
   .auth-sub{ font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--muted); letter-spacing:1px; margin-bottom:24px; }
   .auth-tabs{ display:flex; gap:8px; margin-bottom:20px; }
@@ -396,64 +389,13 @@
   .auth-input{ display:block; width:100%; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px 12px; color:var(--cream); font-family:'JetBrains Mono',monospace; font-size:13px; margin-bottom:10px; }
   .auth-btn{ display:block; width:100%; padding:12px; border-radius:8px; border:none; background:var(--amber); color:var(--bg); font-family:'JetBrains Mono',monospace; font-size:13px; font-weight:700; cursor:pointer; margin-top:4px; }
   .auth-msg{ font-family:'JetBrains Mono',monospace; font-size:12px; margin-top:12px; text-align:center; min-height:18px; }
-  .auth-err{ color:var(--red); }
-  .auth-ok{ color:var(--teal); }
-  .auth-form{ display:none; }
-  .auth-form.active{ display:block; }
+  .auth-err{ color:var(--red); } .auth-ok{ color:var(--teal); }
+  .auth-form{ display:none; } .auth-form.active{ display:block; }
 </style>
-<script>
-// Kill any existing service worker and caches, then reload clean
-if('serviceWorker' in navigator){
-  navigator.serviceWorker.getRegistrations().then(regs=>{
-    if(regs.length > 0){
-      Promise.all([
-        ...regs.map(r=>r.unregister()),
-        ...(window.caches ? [caches.keys().then(ks=>Promise.all(ks.map(k=>caches.delete(k))))] : [])
-      ]).then(()=>window.location.reload());
-    }
-  });
-}
-
-  // Auth overlay logic
-  function authShow(tab){
-    document.getElementById('authLoginForm').classList.toggle('active', tab==='login');
-    document.getElementById('authSignupForm').classList.toggle('active', tab==='signup');
-    document.querySelectorAll('.auth-tab').forEach((t,i)=>t.classList.toggle('active',(i===0)===(tab==='login')));
-  }
-  async function doAuthLogin(){
-    const email = document.getElementById('authEmail').value.trim();
-    const code = document.getElementById('authCode').value.trim().toUpperCase();
-    const msg = document.getElementById('authLoginMsg');
-    if(!email||!code){msg.textContent='Fill in both fields.';msg.className='auth-msg auth-err';return;}
-    const r = await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,code})});
-    const d = await r.json();
-    if(d.ok){document.getElementById('authOverlay').classList.add('hidden');}
-    else{msg.textContent=d.error||'Invalid credentials.';msg.className='auth-msg auth-err';}
-  }
-  async function doAuthSignup(){
-    const name = document.getElementById('authName').value.trim();
-    const email = document.getElementById('authSignupEmail').value.trim();
-    const msg = document.getElementById('authSignupMsg');
-    if(!name||!email){msg.textContent='Fill in both fields.';msg.className='auth-msg auth-err';return;}
-    const r = await fetch('/api/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,email})});
-    const d = await r.json();
-    if(d.ok){msg.textContent='Request sent! Wait for your access code.';msg.className='auth-msg auth-ok';}
-    else{msg.textContent=d.error||'Something went wrong.';msg.className='auth-msg auth-err';}
-  }
-
-  // Check auth on load — show overlay if not logged in
-  (async function checkAuth(){
-    try{
-      const r = await fetch('/api/me');
-      if(r.status===401) document.getElementById('authOverlay').classList.remove('hidden');
-    }catch(e){ /* network error — let through */ }
-  })();
-
-</script>
 </head>
 <body>
 <div class="app">
-  <h1>Mixtape <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.22</span></h1>
+  <h1>Mixtape <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.23</span></h1>
 
   <div class="deck">
     <div class="style-toggle">
@@ -530,6 +472,10 @@ if('serviceWorker' in navigator){
       <div class="playlist-io-row">
         <button class="playlist-io-btn" id="browseJamendoBtn">🎧 Browse free music</button>
       </div>
+      <div class="playlist-io-row">
+        <button class="playlist-io-btn" id="cloudUploadBtn">☁️ Upload to cloud</button>
+        <button class="playlist-io-btn" id="cloudFilesBtn">📡 My cloud files</button>
+      </div>
     </div>
   </div>
 
@@ -546,7 +492,6 @@ if('serviceWorker' in navigator){
     <div class="empty-state">Your playlist is empty — add some audio files above.</div>
   </div>
 </div>
-
 
 <div id="authOverlay" class="hidden">
   <div class="auth-card">
@@ -570,12 +515,117 @@ if('serviceWorker' in navigator){
     </div>
   </div>
 </div>
-
 <div id="editOverlayContainer"></div>
 
 <audio id="audio"></audio>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js">
+  // ---- Cloud sync (R2) ----
+  const cloudUploadBtn = document.getElementById('cloudUploadBtn');
+  const cloudFilesBtn = document.getElementById('cloudFilesBtn');
+
+  cloudUploadBtn.addEventListener('click', ()=>{
+    if(tracks.length === 0){ alert('Add some tracks first.'); return; }
+    const t = currentTrack();
+    if(!t){ alert('Select a track first.'); return; }
+    // Upload current track to R2
+    uploadTrackToCloud(t);
+  });
+
+  async function uploadTrackToCloud(t){
+    cloudUploadBtn.textContent = 'Uploading…';
+    cloudUploadBtn.style.pointerEvents = 'none';
+    try{
+      const blob = await fetch(t.url).then(r => r.blob());
+      const fileName = t.name + '.mp3';
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': blob.type || 'audio/mpeg',
+          'Content-Length': blob.size,
+          'X-File-Name': encodeURIComponent(fileName)
+        },
+        body: blob
+      });
+      const data = await res.json();
+      if(data.ok){
+        t.cloudKey = data.key;
+        alert('Uploaded: ' + t.name);
+      } else {
+        alert('Upload failed: ' + (data.error || 'Unknown error'));
+      }
+    } catch(e){
+      alert('Upload failed: ' + e.message);
+    }
+    cloudUploadBtn.textContent = '☁️ Upload to cloud';
+    cloudUploadBtn.style.pointerEvents = '';
+  }
+
+  cloudFilesBtn.addEventListener('click', async ()=>{
+    cloudFilesBtn.textContent = 'Loading…';
+    try{
+      const res = await fetch('/api/files');
+      const data = await res.json();
+      if(!data.ok){ alert('Could not load files: ' + (data.error || 'Unknown')); cloudFilesBtn.textContent = '📡 My cloud files'; return; }
+      const files = data.files;
+      if(files.length === 0){
+        editOverlayContainer.innerHTML = '<div class="edit-overlay" id="cloudOverlayBackdrop"><div class="edit-panel"><div class="edit-panel-title">Cloud files</div><div class="saved-list-empty">No files uploaded yet.</div><button class="edit-panel-close" id="cloudOverlayClose">Close</button></div></div>';
+        document.getElementById('cloudOverlayBackdrop').addEventListener('click', e=>{ if(e.target.id==='cloudOverlayBackdrop') closeEditPopup(); });
+        document.getElementById('cloudOverlayClose').addEventListener('click', closeEditPopup);
+        cloudFilesBtn.textContent = '📡 My cloud files';
+        return;
+      }
+      const itemsHtml = files.map(f => `
+        <div class="saved-list-item">
+          <div>
+            <div class="saved-list-name">${f.name}</div>
+            <div class="saved-list-meta">${(f.size/1024/1024).toFixed(1)} MB</div>
+          </div>
+          <button class="jamendo-add-btn" data-cloudkey="${encodeURIComponent(f.key)}" data-cloudname="${f.name}">+ Add</button>
+        </div>
+      `).join('');
+      editOverlayContainer.innerHTML = `
+        <div class="edit-overlay" id="cloudOverlayBackdrop">
+          <div class="edit-panel">
+            <div class="edit-panel-title">Cloud files</div>
+            ${itemsHtml}
+            <button class="edit-panel-close" id="cloudOverlayClose">Close</button>
+          </div>
+        </div>
+      `;
+      document.getElementById('cloudOverlayBackdrop').addEventListener('click', e=>{ if(e.target.id==='cloudOverlayBackdrop') closeEditPopup(); });
+      document.getElementById('cloudOverlayClose').addEventListener('click', closeEditPopup);
+      editOverlayContainer.querySelectorAll('[data-cloudkey]').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          const key = decodeURIComponent(btn.dataset.cloudkey);
+          const name = btn.dataset.cloudname;
+          const url = '/api/file/' + encodeURIComponent(key);
+          const seq = idCounter++;
+          tracks.push({
+            id: 't' + seq,
+            order: seq,
+            name: name.replace(/\.mp3$/i,''),
+            artist: '',
+            url,
+            plays: [{speed:1}],
+            pendingSpeed:1, pendingCount:1, pendingCustomActive:false, pendingCustomValue:2,
+            coverUrl: null,
+            skipOnce: false,
+            cloudKey: key
+          });
+          renderPlaylist();
+          if(currentTrackIndex === -1) loadTrack(0, 0, false);
+          btn.textContent = 'Added ✓';
+          btn.disabled = true;
+        });
+      });
+    } catch(e){
+      alert('Error: ' + e.message);
+    }
+    cloudFilesBtn.textContent = '📡 My cloud files';
+  });
+
+</script>
 <script>
   const audio = document.getElementById('audio');
   const fileInput = document.getElementById('fileInput');
@@ -1441,7 +1491,6 @@ if('serviceWorker' in navigator){
 
   renderDeckCover();
 
-  // Media Session API
   function updateMediaSession(){
     if(!('mediaSession' in navigator)) return;
     const t = currentTrack();
@@ -1454,24 +1503,47 @@ if('serviceWorker' in navigator){
   if('mediaSession' in navigator){
     navigator.mediaSession.setActionHandler('play', ()=>{ audio.play(); });
     navigator.mediaSession.setActionHandler('pause', ()=>{ audio.pause(); });
-    navigator.mediaSession.setActionHandler('previoustrack', ()=>{
-      const i = prevPlayableIndex(currentTrackIndex);
-      if(i !== -1) loadTrack(i, 0, true);
-    });
-    navigator.mediaSession.setActionHandler('nexttrack', ()=>{
-      const i = nextPlayableIndex(currentTrackIndex);
-      if(i !== -1) loadTrack(i, 0, true);
-    });
+    navigator.mediaSession.setActionHandler('previoustrack', ()=>{ const i = prevPlayableIndex(currentTrackIndex); if(i !== -1) loadTrack(i, 0, true); });
+    navigator.mediaSession.setActionHandler('nexttrack', ()=>{ const i = nextPlayableIndex(currentTrackIndex); if(i !== -1) loadTrack(i, 0, true); });
   }
   audio.addEventListener('play', updateMediaSession);
   audio.addEventListener('pause', updateMediaSession);
 
+  function authShow(tab){
+    document.getElementById('authLoginForm').classList.toggle('active', tab==='login');
+    document.getElementById('authSignupForm').classList.toggle('active', tab==='signup');
+    document.querySelectorAll('.auth-tab').forEach((t,i)=>t.classList.toggle('active',(i===0)===(tab==='login')));
+  }
+  async function doAuthLogin(){
+    const email=document.getElementById('authEmail').value.trim();
+    const code=document.getElementById('authCode').value.trim().toUpperCase();
+    const msg=document.getElementById('authLoginMsg');
+    if(!email||!code){msg.textContent='Fill in both fields.';msg.className='auth-msg auth-err';return;}
+    const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,code})});
+    const d=await r.json();
+    if(d.ok){document.getElementById('authOverlay').classList.add('hidden');}
+    else{msg.textContent=d.error||'Invalid credentials.';msg.className='auth-msg auth-err';}
+  }
+  async function doAuthSignup(){
+    const name=document.getElementById('authName').value.trim();
+    const email=document.getElementById('authSignupEmail').value.trim();
+    const msg=document.getElementById('authSignupMsg');
+    if(!name||!email){msg.textContent='Fill in both fields.';msg.className='auth-msg auth-err';return;}
+    const r=await fetch('/api/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,email})});
+    const d=await r.json();
+    if(d.ok){msg.textContent='Request sent! Wait for your access code.';msg.className='auth-msg auth-ok';}
+    else{msg.textContent=d.error||'Something went wrong.';msg.className='auth-msg auth-err';}
+  }
+  (async function checkAuth(){
+    try{
+      const r=await fetch('/api/me');
+      if(r.status===401) document.getElementById('authOverlay').classList.remove('hidden');
+    }catch(e){}
+  })();
+
   if('serviceWorker' in navigator){
     window.addEventListener('load', () => {
-      // Unregister all service workers so auth gate is never bypassed by cache
-      navigator.serviceWorker.getRegistrations().then(regs => {
-        regs.forEach(r => r.unregister());
-      });
+      navigator.serviceWorker.getRegistrations().then(regs => { regs.forEach(r => r.unregister()); });
     });
   }
 </script>

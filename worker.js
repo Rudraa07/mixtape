@@ -299,6 +299,82 @@ export default {
       });
     }
 
+    // R2 file upload
+    if (path === '/api/upload' && method === 'POST') {
+      const session = await getSession(request, DB);
+      if (!session) return jsonResponse({ error: 'Unauthorized' }, 401);
+      const user = await DB.prepare('SELECT * FROM users WHERE id = ?').bind(session.id).first();
+      if (!user) return jsonResponse({ error: 'User not found' }, 404);
+
+      // Check storage limit
+      const contentLength = parseInt(request.headers.get('Content-Length') || '0');
+      const fileSizeMb = contentLength / (1024 * 1024);
+      if (user.storage_limit_mb === 0) return jsonResponse({ error: 'No storage access' }, 403);
+      if (user.storage_limit_mb !== -1 && (user.storage_used_mb + fileSizeMb) > user.storage_limit_mb) {
+        return jsonResponse({ error: 'Storage limit exceeded' }, 413);
+      }
+
+      const fileName = request.headers.get('X-File-Name') || 'unknown';
+      const key = session.email + '/' + Date.now() + '_' + fileName;
+      const body = await request.arrayBuffer();
+      await env.AUDIO_BUCKET.put(key, body, {
+        httpMetadata: { contentType: request.headers.get('Content-Type') || 'audio/mpeg' }
+      });
+
+      // Update storage used
+      const newUsed = (user.storage_used_mb || 0) + fileSizeMb;
+      await DB.prepare('UPDATE users SET storage_used_mb = ? WHERE id = ?').bind(newUsed, session.id).run();
+
+      return jsonResponse({ ok: true, key });
+    }
+
+    // R2 list user files
+    if (path === '/api/files' && method === 'GET') {
+      const session = await getSession(request, DB);
+      if (!session) return jsonResponse({ error: 'Unauthorized' }, 401);
+      const prefix = session.email + '/';
+      const listed = await env.AUDIO_BUCKET.list({ prefix });
+      const files = listed.objects.map(o => ({
+        key: o.key,
+        name: o.key.replace(prefix, '').replace(/^\d+_/, ''),
+        size: o.size,
+        uploaded: o.uploaded
+      }));
+      return jsonResponse({ ok: true, files });
+    }
+
+    // R2 stream a file
+    if (path.startsWith('/api/file/') && method === 'GET') {
+      const session = await getSession(request, DB);
+      if (!session) return jsonResponse({ error: 'Unauthorized' }, 401);
+      const key = decodeURIComponent(path.replace('/api/file/', ''));
+      // Ensure user can only access their own files
+      if (!key.startsWith(session.email + '/')) return jsonResponse({ error: 'Forbidden' }, 403);
+      const obj = await env.AUDIO_BUCKET.get(key);
+      if (!obj) return jsonResponse({ error: 'Not found' }, 404);
+      return new Response(obj.body, {
+        headers: {
+          'Content-Type': obj.httpMetadata?.contentType || 'audio/mpeg',
+          'Cache-Control': 'private, max-age=3600'
+        }
+      });
+    }
+
+    // R2 delete a file
+    if (path.startsWith('/api/file/') && method === 'DELETE') {
+      const session = await getSession(request, DB);
+      if (!session) return jsonResponse({ error: 'Unauthorized' }, 401);
+      const key = decodeURIComponent(path.replace('/api/file/', ''));
+      if (!key.startsWith(session.email + '/')) return jsonResponse({ error: 'Forbidden' }, 403);
+      const obj = await env.AUDIO_BUCKET.head(key);
+      const fileSizeMb = obj ? obj.size / (1024 * 1024) : 0;
+      await env.AUDIO_BUCKET.delete(key);
+      const user = await DB.prepare('SELECT storage_used_mb FROM users WHERE id = ?').bind(session.id).first();
+      const newUsed = Math.max(0, (user.storage_used_mb || 0) - fileSizeMb);
+      await DB.prepare('UPDATE users SET storage_used_mb = ? WHERE id = ?').bind(newUsed, session.id).run();
+      return jsonResponse({ ok: true });
+    }
+
     // Auth gate
     const session = await getSession(request, DB);
     if (!session) {
