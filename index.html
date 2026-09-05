@@ -596,7 +596,7 @@
 </div>
 
 <div class="app">
-  <h1>Mixtape <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.33</span></h1>
+  <h1>Mixtape <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.35</span></h1>
 
   <div class="deck">
     <div class="style-toggle">
@@ -1926,6 +1926,18 @@
           const fileName = (t.name + '.mp3').replace(/[^\w\s\.\-]/g, '_');
           let _tok=''; try{_tok=localStorage.getItem('mx_token')||'';}catch(e){}
           if(!_tok || _tok==='undefined' || _tok==='null'){ failed++; window._uploadFirstError=window._uploadFirstError||'Bad token in storage ("'+_tok+'") — log out and log in again'; btn.textContent='Uploading '+(done+failed)+'/'+selected.length+'…'; continue; }
+          // Upload cover art as separate file if available
+          if(t.coverUrl && t.coverUrl.startsWith('data:')){
+            try{
+              const coverBlob = await fetch(t.coverUrl).then(r=>r.blob());
+              const coverName = (t.name + '.cover.jpg').replace(/[^\w\s\.\-]/g, '_');
+              await fetch('/api/upload', {
+                method:'POST', credentials:'same-origin',
+                headers: authHeaders({'Content-Type':'image/jpeg','X-File-Name':coverName}),
+                body: coverBlob
+              });
+            }catch(e){}
+          }
           const res = await fetch('/api/upload', {
             method: 'POST',
             credentials: 'same-origin',
@@ -1963,16 +1975,23 @@
       btn.textContent = '📡 My cloud files';
       if(!data.ok){ alert('Could not load files: ' + (data.error || 'Unknown')); return; }
       const files = data.files || [];
+      // Build a map of cover files for quick lookup
+      const coverMap = {};
+      files.filter(f => f.name.endsWith('.cover.jpg')).forEach(f => {
+        const base = f.name.replace('.cover.jpg','');
+        coverMap[base] = '/api/file/' + encodeURIComponent(f.key);
+      });
+      const audioFiles = files.filter(f => !f.name.endsWith('.cover.jpg'));
       // Decode file names for display
-      const cleanName = key => decodeURIComponent(key.split('/').pop().replace(/^\d+_/, '').replace(/\.mp3$/i,'').replace(/^\d+[\s\-\.]+/, '').trim());
+      const cleanName = key => decodeURIComponent(key.split('/').pop().replace(/^\d+_/, '').replace(/\.mp3$/i,'').replace(/\.cover\.jpg$/i,'').trim());
 
       // Load saved presets from localStorage
       let cloudPresets = {};
       try{ cloudPresets = JSON.parse(localStorage.getItem('mx-cloud-presets') || '{}'); }catch(e){}
 
-      const itemsHtml = files.length === 0
+      const itemsHtml = audioFiles.length === 0
         ? '<div class="saved-list-empty">No files uploaded yet.</div>'
-        : files.map(f => {
+        : audioFiles.map(f => {
             const displayName = cleanName(f.key);
             return `
           <div class="saved-list-item" style="flex-wrap:wrap;gap:6px;">
@@ -2011,8 +2030,8 @@
           <div class="edit-panel" style="max-width:380px;">
             <div class="edit-panel-title">My cloud files</div>
             <div style="max-height:420px;overflow-y:auto;">
-              ${itemsHtml}
               ${presetsHtml}
+              ${itemsHtml}
             </div>
             <div style="display:flex;gap:8px;margin-top:10px;">
               <button class="add-repeat-btn" id="savePresetBtn" style="flex:1;margin-top:0;">💾 Save playlist as preset</button>
@@ -2032,26 +2051,19 @@
           const name = btn.dataset.cloudname;
           const url = '/api/file/' + encodeURIComponent(key);
           const seq = idCounter++;
+          const coverUrl = coverMap[name] || null;
           const newCloudTrack = {
             id: 't' + seq, order: seq, name, artist: '', url,
             plays: [{speed:1}],
             pendingSpeed:1, pendingCount:1, pendingCustomActive:false, pendingCustomValue:2,
-            coverUrl: null, skipOnce: false, cloudKey: key
+            coverUrl, skipOnce: false, cloudKey: key
           };
           tracks.push(newCloudTrack);
           renderPlaylist();
-          if(currentTrackIndex === -1) loadTrack(0, 0, false);
+          if(currentTrackIndex === -1) loadTrack(newCloudTrack.coverUrl ? currentTrackIndex : 0, 0, false);
+          if(currentTrack() === newCloudTrack) renderDeckCover();
           btn.textContent = 'Added ✓';
           btn.disabled = true;
-          fetch(url, { credentials: 'same-origin', headers: authHeaders({}) })
-            .then(r => r.blob())
-            .then(blob => {
-              try{
-                const namedBlob = new File([blob], newCloudTrack.name + '.mp3', { type: blob.type || 'audio/mpeg' });
-                extractCover(namedBlob, newCloudTrack);
-              }catch(e){}
-            })
-            .catch(()=>{});
         });
       });
 
@@ -2072,10 +2084,11 @@
 
       // Delete all files
       document.getElementById('deleteAllCloudBtn').addEventListener('click', async ()=>{
-        if(files.length === 0){ alert('No files to delete.'); return; }
-        if(!confirm('Delete ALL '+files.length+' cloud files? This cannot be undone.')) return;
+        const allFiles = [...audioFiles, ...files.filter(f=>f.name.endsWith('.cover.jpg'))];
+        if(allFiles.length === 0){ alert('No files to delete.'); return; }
+        if(!confirm('Delete ALL '+audioFiles.length+' cloud files? This cannot be undone.')) return;
         let done=0, failed=0;
-        for(const f of files){
+        for(const f of allFiles){
           try{
             const res = await fetch('/api/file/' + encodeURIComponent(f.key), {
               method: 'DELETE', credentials: 'same-origin', headers: authHeaders({})
