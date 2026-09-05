@@ -596,7 +596,7 @@
 </div>
 
 <div class="app">
-  <h1>Mixtape <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.29</span></h1>
+  <h1>Mixtape <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.30</span></h1>
 
   <div class="deck">
     <div class="style-toggle">
@@ -1964,7 +1964,7 @@
       if(!data.ok){ alert('Could not load files: ' + (data.error || 'Unknown')); return; }
       const files = data.files || [];
       // Decode file names for display
-      const cleanName = key => decodeURIComponent(key.split('/').pop().replace(/^\d+_/, '').replace(/\.mp3$/i,''));
+      const cleanName = key => decodeURIComponent(key.split('/').pop().replace(/^\d+_/, '').replace(/\.mp3$/i,'').replace(/^\d+[\s\-\.]+/, '').trim());
 
       // Load saved presets from localStorage
       let cloudPresets = {};
@@ -2016,6 +2016,7 @@
             </div>
             <div style="display:flex;gap:8px;margin-top:10px;">
               <button class="add-repeat-btn" id="savePresetBtn" style="flex:1;margin-top:0;">💾 Save playlist as preset</button>
+              <button class="add-repeat-btn" id="deleteAllCloudBtn" style="flex:1;margin-top:0;background:var(--red);">🗑 Delete all</button>
             </div>
             <button class="edit-panel-close" id="cloudFilesClose">Close</button>
           </div>
@@ -2031,16 +2032,21 @@
           const name = btn.dataset.cloudname;
           const url = '/api/file/' + encodeURIComponent(key);
           const seq = idCounter++;
-          tracks.push({
+          const newCloudTrack = {
             id: 't' + seq, order: seq, name, artist: '', url,
             plays: [{speed:1}],
             pendingSpeed:1, pendingCount:1, pendingCustomActive:false, pendingCustomValue:2,
             coverUrl: null, skipOnce: false, cloudKey: key
-          });
+          };
+          tracks.push(newCloudTrack);
           renderPlaylist();
           if(currentTrackIndex === -1) loadTrack(0, 0, false);
           btn.textContent = 'Added ✓';
           btn.disabled = true;
+          fetch(url, { credentials: 'same-origin', headers: authHeaders({}) })
+            .then(r => r.blob())
+            .then(blob => { try{ extractCover(blob, newCloudTrack); }catch(e){} })
+            .catch(()=>{});
         });
       });
 
@@ -2057,6 +2063,24 @@
           if(d.ok){ btn.closest('.saved-list-item').remove(); }
           else { alert('Delete failed: ' + (d.error||'Unknown')); btn.textContent='✕'; }
         });
+      });
+
+      // Delete all files
+      document.getElementById('deleteAllCloudBtn').addEventListener('click', async ()=>{
+        if(files.length === 0){ alert('No files to delete.'); return; }
+        if(!confirm('Delete ALL '+files.length+' cloud files? This cannot be undone.')) return;
+        let done=0, failed=0;
+        for(const f of files){
+          try{
+            const res = await fetch('/api/file/' + encodeURIComponent(f.key), {
+              method: 'DELETE', credentials: 'same-origin', headers: authHeaders({})
+            });
+            const d = await res.json();
+            if(d.ok) done++; else failed++;
+          }catch(e){ failed++; }
+        }
+        alert('Deleted '+done+' file'+(done===1?'':'s')+(failed?' ('+failed+' failed)':'')+'.'); 
+        closeEditPopup();
       });
 
       // Save current playlist as preset
