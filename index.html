@@ -39,7 +39,7 @@
     font-family:'JetBrains Mono', monospace; font-size:11px; letter-spacing:2px;
     color:var(--teal); text-transform:uppercase; margin-bottom:4px;
   }
-  h1{ font-size:26px; font-weight:700; margin:0 0 18px; letter-spacing:-0.5px; }
+  h1{ font-size:26px; font-weight:700; margin:0 0 18px; letter-spacing:-0.5px; padding-left:40px; }
 
   /* ---- Deck (now playing) ---- */
   .deck{
@@ -378,6 +378,129 @@
   }
   .cover-edit-btn-tt:active{ opacity:0.6; }
 
+  /* ---- Hamburger menu ---- */
+  .hamburger-btn{
+    position:fixed; top:18px; left:16px; z-index:200;
+    background:none; border:none; cursor:pointer; padding:6px;
+    display:flex; flex-direction:column; gap:5px;
+  }
+  .hamburger-btn span{
+    display:block; width:22px; height:2px;
+    background:var(--cream); border-radius:2px;
+    transition:all 0.2s;
+  }
+
+  .side-drawer{
+    position:fixed; top:0; left:0; bottom:0; width:280px;
+    background:var(--panel); border-right:1px solid var(--line);
+    z-index:300; transform:translateX(-100%);
+    transition:transform 0.25s ease; display:flex; flex-direction:column;
+    padding:0;
+  }
+  .side-drawer.open{ transform:translateX(0); }
+  .drawer-backdrop{
+    position:fixed; inset:0; background:rgba(0,0,0,0.5);
+    z-index:299; display:none;
+  }
+  .drawer-backdrop.open{ display:block; }
+
+  .drawer-header{
+    padding:22px 20px 16px;
+    border-bottom:1px solid var(--line);
+    font-size:18px; font-weight:700; letter-spacing:-0.3px;
+  }
+  .drawer-nav{ flex:1; padding:8px 0; overflow-y:auto; }
+  .drawer-item{
+    display:flex; align-items:center; gap:14px;
+    padding:14px 20px; cursor:pointer;
+    font-size:15px; font-weight:500;
+    border:none; background:none; color:var(--cream);
+    width:100%; text-align:left;
+  }
+  .drawer-item:active{ background:var(--panel2); }
+  .drawer-item-icon{ font-size:18px; width:24px; text-align:center; }
+  .drawer-footer{ padding:16px 20px; border-top:1px solid var(--line); }
+  .drawer-logout-btn{
+    display:flex; align-items:center; gap:14px;
+    width:100%; background:none; border:1px solid var(--red);
+    color:var(--red); border-radius:10px; padding:12px 16px;
+    font-family:'Space Grotesk',sans-serif; font-size:15px; font-weight:500;
+    cursor:pointer;
+  }
+  .drawer-logout-btn:active{ background:var(--red); color:var(--cream); }
+
+  /* ---- Sub-panels (settings / theme) ---- */
+  .sub-panel{
+    position:fixed; top:0; left:0; bottom:0; width:280px;
+    background:var(--panel); border-right:1px solid var(--line);
+    z-index:301; transform:translateX(-100%);
+    transition:transform 0.25s ease; display:flex; flex-direction:column;
+  }
+  .sub-panel.open{ transform:translateX(0); }
+  .sub-panel-header{
+    display:flex; align-items:center; gap:12px;
+    padding:20px 16px 16px; border-bottom:1px solid var(--line);
+  }
+  .sub-panel-back{
+    background:none; border:none; color:var(--amber); cursor:pointer;
+    font-size:20px; padding:2px 6px; line-height:1;
+  }
+  .sub-panel-title{ font-size:16px; font-weight:700; }
+  .sub-panel-body{ flex:1; padding:20px 16px; overflow-y:auto; }
+
+  /* ---- Theme color picker ---- */
+  .theme-section-label{
+    font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:1px;
+    color:var(--muted); text-transform:uppercase; margin:0 0 10px;
+  }
+  .color-picker-wrap{
+    margin-bottom:24px;
+  }
+  .hue-strip{
+    width:100%; height:18px; border-radius:9px; cursor:crosshair;
+    background:linear-gradient(to right,
+      hsl(0,100%,50%), hsl(30,100%,50%), hsl(60,100%,50%),
+      hsl(90,100%,50%), hsl(120,100%,50%), hsl(150,100%,50%),
+      hsl(160,100%,35%), hsl(180,100%,35%), hsl(200,100%,40%),
+      hsl(240,100%,50%), hsl(270,100%,50%), hsl(300,100%,50%), hsl(360,100%,50%));
+    position:relative; margin-bottom:10px;
+  }
+  .hue-thumb{
+    position:absolute; top:50%; width:20px; height:20px; border-radius:50%;
+    background:white; border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,0.4);
+    transform:translate(-50%,-50%); pointer-events:none;
+  }
+  .sl-box{
+    width:100%; height:140px; border-radius:10px; cursor:crosshair;
+    position:relative; margin-bottom:10px;
+  }
+  .sl-thumb{
+    position:absolute; width:18px; height:18px; border-radius:50%;
+    border:2px solid white; box-shadow:0 1px 4px rgba(0,0,0,0.4);
+    transform:translate(-50%,-50%); pointer-events:none;
+  }
+  .color-preview-row{
+    display:flex; align-items:center; gap:10px; margin-bottom:6px;
+  }
+  .color-preview-swatch{
+    width:32px; height:32px; border-radius:8px; border:1px solid var(--line); flex-shrink:0;
+  }
+  .color-preview-hex{
+    font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--muted); flex:1;
+  }
+  .color-apply-btn{
+    font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:700;
+    background:var(--amber); border:none; color:var(--bg);
+    padding:8px 16px; border-radius:8px; cursor:pointer; margin-top:4px; width:100%;
+  }
+  .color-apply-btn:active{ opacity:0.7; }
+  .theme-reset-btn{
+    font-family:'JetBrains Mono',monospace; font-size:12px;
+    background:none; border:1px solid var(--line); color:var(--muted);
+    padding:8px 16px; border-radius:8px; cursor:pointer; margin-top:6px; width:100%;
+  }
+  .theme-reset-btn:active{ background:var(--panel2); }
+
   #authOverlay{ position:fixed; inset:0; background:var(--bg); z-index:9999; display:flex; align-items:center; justify-content:center; padding:20px; }
   #authOverlay.hidden{ display:none; }
   .auth-card{ background:var(--panel); border:1px solid var(--line); border-radius:18px; padding:28px 24px; width:100%; max-width:360px; }
@@ -394,8 +517,86 @@
 </style>
 </head>
 <body>
+<!-- Hamburger button -->
+<button class="hamburger-btn" id="hamburgerBtn" aria-label="Menu">
+  <span></span><span></span><span></span>
+</button>
+
+<!-- Backdrop -->
+<div class="drawer-backdrop" id="drawerBackdrop"></div>
+
+<!-- Side drawer -->
+<div class="side-drawer" id="sideDrawer">
+  <div class="drawer-header">Mixtape</div>
+  <nav class="drawer-nav">
+    <button class="drawer-item" id="drawerSettingsBtn">
+      <span class="drawer-item-icon">⚙️</span> Settings
+    </button>
+    <button class="drawer-item" id="drawerThemeBtn">
+      <span class="drawer-item-icon">🎨</span> Theme
+    </button>
+  </nav>
+  <div class="drawer-footer">
+    <button class="drawer-logout-btn" id="drawerLogoutBtn">
+      <span style="font-size:18px;">↪</span> Log out
+    </button>
+  </div>
+</div>
+
+<!-- Settings sub-panel -->
+<div class="sub-panel" id="settingsPanel">
+  <div class="sub-panel-header">
+    <button class="sub-panel-back" id="settingsBack">‹</button>
+    <span class="sub-panel-title">Settings</span>
+  </div>
+  <div class="sub-panel-body">
+    <p style="color:var(--muted);font-size:13px;">Nothing here yet — coming soon.</p>
+  </div>
+</div>
+
+<!-- Theme sub-panel -->
+<div class="sub-panel" id="themePanel">
+  <div class="sub-panel-header">
+    <button class="sub-panel-back" id="themeBack">‹</button>
+    <span class="sub-panel-title">Theme</span>
+  </div>
+  <div class="sub-panel-body">
+    <div class="color-picker-wrap">
+      <div class="theme-section-label">Accent colour</div>
+      <div class="sl-box" id="slBox">
+        <div class="sl-thumb" id="slThumb"></div>
+      </div>
+      <div class="hue-strip" id="hueStrip">
+        <div class="hue-thumb" id="hueThumb"></div>
+      </div>
+      <div class="color-preview-row">
+        <div class="color-preview-swatch" id="colorSwatch"></div>
+        <span class="color-preview-hex" id="colorHex">#e8a33d</span>
+      </div>
+      <button class="color-apply-btn" id="colorApplyBtn">Apply accent</button>
+    </div>
+    <button class="theme-reset-btn" id="themeResetBtn">↺ Reset accent</button>
+
+    <div class="color-picker-wrap" style="margin-top:28px;">
+      <div class="theme-section-label">Background colour</div>
+      <div class="sl-box" id="slBox2">
+        <div class="sl-thumb" id="slThumb2"></div>
+      </div>
+      <div class="hue-strip" id="hueStrip2">
+        <div class="hue-thumb" id="hueThumb2"></div>
+      </div>
+      <div class="color-preview-row">
+        <div class="color-preview-swatch" id="colorSwatch2"></div>
+        <span class="color-preview-hex" id="colorHex2">#1a1816</span>
+      </div>
+      <button class="color-apply-btn" id="colorApplyBtn2">Apply background</button>
+      <button class="theme-reset-btn" id="themeResetBtn2" style="margin-top:6px;">↺ Reset background</button>
+    </div>
+  </div>
+</div>
+
 <div class="app">
-  <h1>Mixtape <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.24</span></h1>
+  <h1>Mixtape <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.29</span></h1>
 
   <div class="deck">
     <div class="style-toggle">
@@ -1451,6 +1652,220 @@
     }catch(e){}
   })();
 
+  // ---- Hamburger menu ----
+  const hamburgerBtn = document.getElementById('hamburgerBtn');
+  const sideDrawer = document.getElementById('sideDrawer');
+  const drawerBackdrop = document.getElementById('drawerBackdrop');
+  const settingsPanel = document.getElementById('settingsPanel');
+  const themePanel = document.getElementById('themePanel');
+
+  function openDrawer(){ sideDrawer.classList.add('open'); drawerBackdrop.classList.add('open'); }
+  function closeDrawer(){ sideDrawer.classList.remove('open'); drawerBackdrop.classList.remove('open'); settingsPanel.classList.remove('open'); themePanel.classList.remove('open'); }
+
+  hamburgerBtn.addEventListener('click', openDrawer);
+  drawerBackdrop.addEventListener('click', closeDrawer);
+
+  document.getElementById('drawerSettingsBtn').addEventListener('click', ()=>{ settingsPanel.classList.add('open'); });
+  document.getElementById('settingsBack').addEventListener('click', ()=>{ settingsPanel.classList.remove('open'); });
+
+  document.getElementById('drawerThemeBtn').addEventListener('click', ()=>{ themePanel.classList.add('open'); initColorPicker(); initColorPicker2(); });
+  document.getElementById('themeBack').addEventListener('click', ()=>{ themePanel.classList.remove('open'); });
+
+  document.getElementById('drawerLogoutBtn').addEventListener('click', async ()=>{
+    try{
+      await fetch('/api/logout', { method:'POST', credentials:'same-origin', headers: authHeaders({'Content-Type':'application/json'}) });
+    }catch(e){}
+    try{ localStorage.removeItem('mx_token'); }catch(e){}
+    location.reload();
+  });
+
+  // ---- Theme colour picker ----
+  let pickerHue = 38, pickerS = 0.72, pickerL = 0.57;
+  let pickerInited = false;
+
+  function hslToHex(h, s, l){
+    const a = s * Math.min(l, 1-l);
+    const f = n => { const k=(n+h/30)%12; const c=a*Math.max(Math.min(k-3,9-k,1),-1); return Math.round(255*(l-c)).toString(16).padStart(2,'0'); };
+    return '#'+f(0)+f(8)+f(4);
+  }
+
+  function hslFromSV(h, sv, vv){
+    // sv=saturation in HSV, vv=value in HSV → convert to HSL
+    const l = vv * (1 - sv/2);
+    const s = l===0||l===1 ? 0 : (vv-l)/Math.min(l,1-l);
+    return {s, l};
+  }
+
+  function updatePickerUI(){
+    const hex = hslToHex(pickerHue, pickerS, pickerL);
+    document.getElementById('colorSwatch').style.background = hex;
+    document.getElementById('colorHex').textContent = hex;
+    // SL box background
+    const slBox = document.getElementById('slBox');
+    slBox.style.background = `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, hsl(${pickerHue},100%,50%))`;
+    // Position SL thumb — convert HSL back to SV for display
+    const v = pickerL + pickerS * Math.min(pickerL, 1-pickerL);
+    const sv = v===0 ? 0 : 2*(1-pickerL/v);
+    const slThumb = document.getElementById('slThumb');
+    slThumb.style.left = (sv*100)+'%';
+    slThumb.style.top = ((1-v)*100)+'%';
+    // Hue thumb
+    const hueThumb = document.getElementById('hueThumb');
+    hueThumb.style.left = (pickerHue/360*100)+'%';
+    hueThumb.style.background = `hsl(${pickerHue},100%,50%)`;
+  }
+
+  function initColorPicker(){
+    if(pickerInited) return;
+    pickerInited = true;
+
+    // Load saved accent if any
+    try{
+      const saved = localStorage.getItem('mx-accent');
+      if(saved) applyAccent(saved);
+    }catch(e){}
+
+    const slBox = document.getElementById('slBox');
+    const hueStrip = document.getElementById('hueStrip');
+
+    function dragSL(e){
+      const rect = slBox.getBoundingClientRect();
+      const cx = e.touches ? e.touches[0].clientX : e.clientX;
+      const cy = e.touches ? e.touches[0].clientY : e.clientY;
+      const sv = Math.max(0, Math.min(1, (cx-rect.left)/rect.width));
+      const vv = Math.max(0, Math.min(1, 1-(cy-rect.top)/rect.height));
+      const r = hslFromSV(pickerHue, sv, vv);
+      pickerS = r.s; pickerL = r.l;
+      updatePickerUI();
+    }
+    function dragHue(e){
+      const rect = hueStrip.getBoundingClientRect();
+      const cx = e.touches ? e.touches[0].clientX : e.clientX;
+      pickerHue = Math.max(0, Math.min(360, ((cx-rect.left)/rect.width)*360));
+      updatePickerUI();
+    }
+
+    let draggingSL=false, draggingHue=false;
+    slBox.addEventListener('mousedown', e=>{ draggingSL=true; dragSL(e); });
+    slBox.addEventListener('touchstart', e=>{ draggingSL=true; dragSL(e); e.preventDefault(); }, {passive:false});
+    hueStrip.addEventListener('mousedown', e=>{ draggingHue=true; dragHue(e); });
+    hueStrip.addEventListener('touchstart', e=>{ draggingHue=true; dragHue(e); e.preventDefault(); }, {passive:false});
+    window.addEventListener('mousemove', e=>{ if(draggingSL) dragSL(e); if(draggingHue) dragHue(e); });
+    window.addEventListener('touchmove', e=>{ if(draggingSL) dragSL(e); if(draggingHue) dragHue(e); }, {passive:false});
+    window.addEventListener('mouseup', ()=>{ draggingSL=false; draggingHue=false; });
+    window.addEventListener('touchend', ()=>{ draggingSL=false; draggingHue=false; });
+
+    updatePickerUI();
+  }
+
+  function applyAccent(hex){
+    document.documentElement.style.setProperty('--amber', hex);
+    try{ localStorage.setItem('mx-accent', hex); }catch(e){}
+  }
+
+  document.getElementById('colorApplyBtn').addEventListener('click', ()=>{
+    const hex = document.getElementById('colorHex').textContent;
+    applyAccent(hex);
+  });
+
+
+
+  // ---- Background colour picker ----
+  let pickerHue2 = 30, pickerS2 = 0.08, pickerL2 = 0.10;
+  let pickerInited2 = false;
+
+  function updatePickerUI2(){
+    const hex = hslToHex(pickerHue2, pickerS2, pickerL2);
+    const swatch = document.getElementById('colorSwatch2');
+    const hexEl = document.getElementById('colorHex2');
+    const slBox2 = document.getElementById('slBox2');
+    const slThumb2 = document.getElementById('slThumb2');
+    const hueThumb2 = document.getElementById('hueThumb2');
+    if(!swatch) return;
+    swatch.style.background = hex;
+    hexEl.textContent = hex;
+    slBox2.style.background = `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, hsl(${pickerHue2},100%,50%))`;
+    const v = pickerL2 + pickerS2 * Math.min(pickerL2, 1-pickerL2);
+    const sv = v===0 ? 0 : 2*(1-pickerL2/v);
+    slThumb2.style.left = (sv*100)+'%';
+    slThumb2.style.top = ((1-v)*100)+'%';
+    hueThumb2.style.left = (pickerHue2/360*100)+'%';
+    hueThumb2.style.background = `hsl(${pickerHue2},100%,50%)`;
+  }
+
+  function initColorPicker2(){
+    if(pickerInited2) return;
+    pickerInited2 = true;
+
+    try{
+      const saved = localStorage.getItem('mx-bg');
+      if(saved) applyBg(saved);
+    }catch(e){}
+
+    const slBox2 = document.getElementById('slBox2');
+    const hueStrip2 = document.getElementById('hueStrip2');
+
+    updatePickerUI2();
+
+    function dragSL2(e){
+      const rect = slBox2.getBoundingClientRect();
+      const cx = e.touches ? e.touches[0].clientX : e.clientX;
+      const cy = e.touches ? e.touches[0].clientY : e.clientY;
+      const sv = Math.max(0, Math.min(1, (cx-rect.left)/rect.width));
+      const vv = Math.max(0, Math.min(1, 1-(cy-rect.top)/rect.height));
+      const r = hslFromSV(pickerHue2, sv, vv);
+      pickerS2 = r.s; pickerL2 = r.l;
+      updatePickerUI2();
+    }
+    function dragHue2(e){
+      const rect = hueStrip2.getBoundingClientRect();
+      const cx = e.touches ? e.touches[0].clientX : e.clientX;
+      pickerHue2 = Math.max(0, Math.min(360, ((cx-rect.left)/rect.width)*360));
+      updatePickerUI2();
+    }
+
+    let draggingSL2=false, draggingHue2=false;
+    slBox2.addEventListener('mousedown', e=>{ draggingSL2=true; dragSL2(e); });
+    slBox2.addEventListener('touchstart', e=>{ draggingSL2=true; dragSL2(e); e.preventDefault(); }, {passive:false});
+    hueStrip2.addEventListener('mousedown', e=>{ draggingHue2=true; dragHue2(e); });
+    hueStrip2.addEventListener('touchstart', e=>{ draggingHue2=true; dragHue2(e); e.preventDefault(); }, {passive:false});
+    window.addEventListener('mousemove', e=>{ if(draggingSL2) dragSL2(e); if(draggingHue2) dragHue2(e); });
+    window.addEventListener('touchmove', e=>{ if(draggingSL2) dragSL2(e); if(draggingHue2) dragHue2(e); }, {passive:false});
+    window.addEventListener('mouseup', ()=>{ draggingSL2=false; draggingHue2=false; });
+    window.addEventListener('touchend', ()=>{ draggingSL2=false; draggingHue2=false; });
+
+    updatePickerUI2();
+  }
+
+  function applyBg(hex){
+    document.documentElement.style.setProperty('--bg', hex);
+    // Also darken panel slightly relative to bg
+    try{ localStorage.setItem('mx-bg', hex); }catch(e){}
+  }
+
+  document.getElementById('colorApplyBtn2').addEventListener('click', ()=>{
+    const hex = document.getElementById('colorHex2').textContent;
+    applyBg(hex);
+  });
+
+  document.getElementById('themeResetBtn').addEventListener('click', ()=>{
+    document.documentElement.style.removeProperty('--amber');
+    try{ localStorage.removeItem('mx-accent'); }catch(e){}
+    pickerHue=38; pickerS=0.72; pickerL=0.57;
+    if(pickerInited) updatePickerUI();
+  });
+
+  document.getElementById('themeResetBtn2').addEventListener('click', ()=>{
+    document.documentElement.style.removeProperty('--bg');
+    try{ localStorage.removeItem('mx-bg'); }catch(e){}
+    pickerHue2=30; pickerS2=0.08; pickerL2=0.10;
+    if(pickerInited2) updatePickerUI2();
+  });
+
+  // Apply saved accent on load
+  try{ const a=localStorage.getItem('mx-accent'); if(a) document.documentElement.style.setProperty('--amber',a); }catch(e){}
+  try{ const b=localStorage.getItem('mx-bg'); if(b) document.documentElement.style.setProperty('--bg',b); }catch(e){}
+
   if('serviceWorker' in navigator){
     window.addEventListener('load', () => {
       navigator.serviceWorker.getRegistrations().then(regs => { regs.forEach(r => r.unregister()); });
@@ -1508,7 +1923,7 @@
           let blob;
           try{ blob = await fetch(t.url).then(r => { if(!r.ok) throw new Error('blob fetch '+r.status); return r.blob(); }); }
           catch(blobErr){ failed++; window._uploadFirstError = window._uploadFirstError || 'Track "'+t.name+'" file is no longer accessible — re-add it without refreshing the page first'; btn.textContent = 'Uploading '+(done+failed)+'/'+selected.length+'…'; continue; }
-          const fileName = encodeURIComponent(t.name + '.mp3');
+          const fileName = (t.name + '.mp3').replace(/[^\w\s\.\-]/g, '_');
           let _tok=''; try{_tok=localStorage.getItem('mx_token')||'';}catch(e){}
           if(!_tok || _tok==='undefined' || _tok==='null'){ failed++; window._uploadFirstError=window._uploadFirstError||'Bad token in storage ("'+_tok+'") — log out and log in again'; btn.textContent='Uploading '+(done+failed)+'/'+selected.length+'…'; continue; }
           const res = await fetch('/api/upload', {
@@ -1548,39 +1963,76 @@
       btn.textContent = '📡 My cloud files';
       if(!data.ok){ alert('Could not load files: ' + (data.error || 'Unknown')); return; }
       const files = data.files || [];
+      // Decode file names for display
+      const cleanName = key => decodeURIComponent(key.split('/').pop().replace(/^\d+_/, '').replace(/\.mp3$/i,''));
+
+      // Load saved presets from localStorage
+      let cloudPresets = {};
+      try{ cloudPresets = JSON.parse(localStorage.getItem('mx-cloud-presets') || '{}'); }catch(e){}
+
       const itemsHtml = files.length === 0
         ? '<div class="saved-list-empty">No files uploaded yet.</div>'
-        : files.map(f => `
-          <div class="saved-list-item">
-            <div style="min-width:0;">
-              <div class="saved-list-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${f.name}</div>
+        : files.map(f => {
+            const displayName = cleanName(f.key);
+            return `
+          <div class="saved-list-item" style="flex-wrap:wrap;gap:6px;">
+            <div style="min-width:0;flex:1;">
+              <div class="saved-list-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${displayName}</div>
               <div class="saved-list-meta">${(f.size/1024/1024).toFixed(1)} MB</div>
             </div>
-            <button class="jamendo-add-btn" data-cloudkey="${encodeURIComponent(f.key)}" data-cloudname="${f.name}">+ Add</button>
-          </div>
-        `).join('');
+            <div style="display:flex;gap:6px;flex-shrink:0;">
+              <button class="jamendo-add-btn cloud-add-btn" data-cloudkey="${encodeURIComponent(f.key)}" data-cloudname="${displayName}">+ Add</button>
+              <button class="jamendo-add-btn cloud-del-btn" data-cloudkey="${encodeURIComponent(f.key)}" style="color:var(--red);border-color:var(--red);">✕</button>
+            </div>
+          </div>`;
+          }).join('');
+
+      // Preset section
+      const presetNames = Object.keys(cloudPresets);
+      const presetsHtml = presetNames.length === 0 ? '' : `
+        <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">Saved playlist presets</div>
+          ${presetNames.map(n => `
+            <div class="saved-list-item">
+              <div>
+                <div class="saved-list-name">${n}</div>
+                <div class="saved-list-meta">${cloudPresets[n].tracks.length} track${cloudPresets[n].tracks.length===1?'':'s'}</div>
+              </div>
+              <div style="display:flex;gap:6px;">
+                <button class="jamendo-add-btn preset-load-btn" data-preset="${n}">Load</button>
+                <button class="jamendo-add-btn preset-del-btn" data-preset="${n}" style="color:var(--red);border-color:var(--red);">✕</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>`;
 
       editOverlayContainer.innerHTML = `
         <div class="edit-overlay" id="cloudFilesBackdrop">
           <div class="edit-panel" style="max-width:380px;">
             <div class="edit-panel-title">My cloud files</div>
-            <div style="max-height:360px;overflow-y:auto;">${itemsHtml}</div>
+            <div style="max-height:420px;overflow-y:auto;">
+              ${itemsHtml}
+              ${presetsHtml}
+            </div>
+            <div style="display:flex;gap:8px;margin-top:10px;">
+              <button class="add-repeat-btn" id="savePresetBtn" style="flex:1;margin-top:0;">💾 Save playlist as preset</button>
+            </div>
             <button class="edit-panel-close" id="cloudFilesClose">Close</button>
           </div>
         </div>
       `;
       document.getElementById('cloudFilesBackdrop').addEventListener('click', e=>{ if(e.target.id==='cloudFilesBackdrop') closeEditPopup(); });
       document.getElementById('cloudFilesClose').addEventListener('click', closeEditPopup);
-      editOverlayContainer.querySelectorAll('[data-cloudkey]').forEach(btn=>{
+
+      // Add track
+      editOverlayContainer.querySelectorAll('.cloud-add-btn').forEach(btn=>{
         btn.addEventListener('click', ()=>{
           const key = decodeURIComponent(btn.dataset.cloudkey);
           const name = btn.dataset.cloudname;
           const url = '/api/file/' + encodeURIComponent(key);
           const seq = idCounter++;
           tracks.push({
-            id: 't' + seq, order: seq,
-            name: name.replace(/\.mp3$/i,''),
-            artist: '', url,
+            id: 't' + seq, order: seq, name, artist: '', url,
             plays: [{speed:1}],
             pendingSpeed:1, pendingCount:1, pendingCustomActive:false, pendingCustomValue:2,
             coverUrl: null, skipOnce: false, cloudKey: key
@@ -1589,6 +2041,87 @@
           if(currentTrackIndex === -1) loadTrack(0, 0, false);
           btn.textContent = 'Added ✓';
           btn.disabled = true;
+        });
+      });
+
+      // Delete file from R2
+      editOverlayContainer.querySelectorAll('.cloud-del-btn').forEach(btn=>{
+        btn.addEventListener('click', async ()=>{
+          const key = decodeURIComponent(btn.dataset.cloudkey);
+          if(!confirm('Delete this file from cloud? This cannot be undone.')) return;
+          btn.textContent = '…';
+          const res = await fetch('/api/file/' + encodeURIComponent(key), {
+            method: 'DELETE', credentials: 'same-origin', headers: authHeaders({})
+          });
+          const d = await res.json();
+          if(d.ok){ btn.closest('.saved-list-item').remove(); }
+          else { alert('Delete failed: ' + (d.error||'Unknown')); btn.textContent='✕'; }
+        });
+      });
+
+      // Save current playlist as preset
+      document.getElementById('savePresetBtn').addEventListener('click', ()=>{
+        if(tracks.length === 0){ alert('No tracks in playlist.'); return; }
+        const name = prompt('Name this preset:');
+        if(!name) return;
+        const preset = {
+          tracks: tracks.map(t => ({
+            name: t.name,
+            cloudKey: t.cloudKey || null,
+            plays: t.plays,
+            artist: t.artist || ''
+          }))
+        };
+        try{
+          cloudPresets[name.trim()] = preset;
+          localStorage.setItem('mx-cloud-presets', JSON.stringify(cloudPresets));
+          alert('Preset saved! Load it from "My cloud files" next time.');
+          closeEditPopup();
+        }catch(e){ alert('Could not save preset.'); }
+      });
+
+      // Load preset
+      editOverlayContainer.querySelectorAll('.preset-load-btn').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          const preset = cloudPresets[btn.dataset.preset];
+          if(!preset) return;
+          const missing = preset.tracks.filter(t => t.cloudKey && !files.find(f => f.key === t.cloudKey));
+          if(missing.length > 0){
+            const ok = confirm(`${missing.length} track(s) not found in cloud. Load available tracks only?`);
+            if(!ok) return;
+          }
+          if(tracks.length > 0 && !confirm('Replace current playlist with this preset?')) return;
+          audio.pause(); audio.removeAttribute('src');
+          tracks = []; currentTrackIndex = -1; currentPlayIndex = 0; expandedTrackId = null;
+          preset.tracks.forEach(rec => {
+            if(!rec.cloudKey) return;
+            const file = files.find(f => f.key === rec.cloudKey);
+            if(!file) return;
+            const seq = idCounter++;
+            tracks.push({
+              id: 't'+seq, order: seq,
+              name: rec.name, artist: rec.artist||'',
+              url: '/api/file/' + encodeURIComponent(rec.cloudKey),
+              plays: rec.plays || [{speed:1}],
+              pendingSpeed:1, pendingCount:1, pendingCustomActive:false, pendingCustomValue:2,
+              coverUrl: null, skipOnce: false, cloudKey: rec.cloudKey
+            });
+          });
+          closeEditPopup();
+          renderPlaylist();
+          renderDeckCover();
+          trackTitle.textContent = tracks.length ? 'Select a track' : 'No track loaded';
+          playStatus.textContent = tracks.length ? 'Preset loaded' : 'Load a file to begin';
+        });
+      });
+
+      // Delete preset
+      editOverlayContainer.querySelectorAll('.preset-del-btn').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          if(!confirm('Delete preset "'+btn.dataset.preset+'"?')) return;
+          delete cloudPresets[btn.dataset.preset];
+          try{ localStorage.setItem('mx-cloud-presets', JSON.stringify(cloudPresets)); }catch(e){}
+          btn.closest('.saved-list-item').remove();
         });
       });
     } catch(e){
