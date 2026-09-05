@@ -596,7 +596,7 @@
 </div>
 
 <div class="app">
-  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.37</span></h1>
+  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.38</span></h1>
 
   <div class="deck">
     <div class="style-toggle">
@@ -742,6 +742,20 @@
   const liveSpeedRow = document.getElementById('liveSpeedRow');
 
   const ICON_PLAY = '<path d="M8 5v14l11-7z"/>';
+
+  const _blobUrlCache = {};
+  async function authedImgUrl(url){
+    if(!url) return null;
+    if(!url.startsWith('/api/file/')) return url;
+    if(_blobUrlCache[url]) return _blobUrlCache[url];
+    try{
+      const r = await fetch(url, { credentials:'same-origin', headers: authHeaders({}) });
+      const blob = await r.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      _blobUrlCache[url] = blobUrl;
+      return blobUrl;
+    }catch(e){ return null; }
+  }
 
   function authHeaders(extra) {
     const headers = Object.assign({}, extra || {});
@@ -2062,19 +2076,23 @@
           const name = btn.dataset.cloudname;
           const url = '/api/file/' + encodeURIComponent(key);
           const seq = idCounter++;
-          const coverUrl = coverMap[name] || null;
+          const rawCoverUrl = coverMap[name] || null;
           const newCloudTrack = {
             id: 't' + seq, order: seq, name, artist: '', url,
             plays: [{speed:1}],
             pendingSpeed:1, pendingCount:1, pendingCustomActive:false, pendingCustomValue:2,
-            coverUrl, skipOnce: false, cloudKey: key
+            coverUrl: null, skipOnce: false, cloudKey: key
           };
           tracks.push(newCloudTrack);
           renderPlaylist();
-          if(currentTrackIndex === -1) loadTrack(newCloudTrack.coverUrl ? currentTrackIndex : 0, 0, false);
-          if(currentTrack() === newCloudTrack) renderDeckCover();
+          if(currentTrackIndex === -1) loadTrack(0, 0, false);
           btn.textContent = 'Added ✓';
           btn.disabled = true;
+          if(rawCoverUrl){
+            authedImgUrl(rawCoverUrl).then(blobUrl => {
+              if(blobUrl){ newCloudTrack.coverUrl = blobUrl; renderPlaylist(); if(currentTrack()===newCloudTrack) renderDeckCover(); }
+            });
+          }
         });
       });
 
@@ -2157,7 +2175,7 @@
               url: '/api/file/' + encodeURIComponent(rec.cloudKey),
               plays: rec.plays || [{speed:1}],
               pendingSpeed:1, pendingCount:1, pendingCustomActive:false, pendingCustomValue:2,
-              coverUrl: coverMap[rec.name] || null, skipOnce: false, cloudKey: rec.cloudKey
+              coverUrl: null, skipOnce: false, cloudKey: rec.cloudKey, _rawCoverUrl: coverMap[rec.name] || null
             });
           });
           closeEditPopup();
@@ -2165,6 +2183,14 @@
           renderDeckCover();
           trackTitle.textContent = tracks.length ? 'Select a track' : 'No track loaded';
           playStatus.textContent = tracks.length ? 'Preset loaded' : 'Load a file to begin';
+          // Resolve cloud cover URLs
+          tracks.forEach(t => {
+            if(t._rawCoverUrl){
+              authedImgUrl(t._rawCoverUrl).then(blobUrl => {
+                if(blobUrl){ t.coverUrl = blobUrl; delete t._rawCoverUrl; renderPlaylist(); if(currentTrack()===t) renderDeckCover(); }
+              });
+            }
+          });
         });
       });
 
