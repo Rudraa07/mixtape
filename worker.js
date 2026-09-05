@@ -83,10 +83,24 @@ function adminHTML(users) {
     'async function approve(id){const r=await fetch("/admin/approve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id})});const d=await r.json();if(d.code){alert("Approved!\\nCode: "+d.code);location.reload();}else alert("Error: "+(d.error||"Unknown"));}',
     'async function del(id){if(!confirm("Delete this user?"))return;const r=await fetch("/admin/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id})});const d=await r.json();if(d.ok)location.reload();else alert("Error: "+(d.error||"Unknown"));}',
     'async function setLimit(id,value){const customCol=document.getElementById("customcol_"+id);if(value==="custom"){if(customCol)customCol.style.display="";return;}if(customCol)customCol.style.display="none";const limit=parseInt(value);const r=await fetch("/admin/setlimit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,limit})});const d=await r.json();if(d.ok)location.reload();else alert("Error: "+(d.error||"Unknown"));}',
-    'async function saveCustom(id){const val=document.getElementById("custom_"+id).value;const limit=parseInt(val);if(!limit||limit<1){alert("Enter a valid MB amount");return;}const r=await fetch("/admin/setlimit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,limit})});const d=await r.json();if(d.ok)location.reload();else alert("Error: "+(d.error||"Unknown"));}'
+    'async function saveCustom(id){const val=document.getElementById("custom_"+id).value;const limit=parseInt(val);if(!limit||limit<1){alert("Enter a valid MB amount");return;}const r=await fetch("/admin/setlimit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,limit})});const d=await r.json();if(d.ok)location.reload();else alert("Error: "+(d.error||"Unknown"));}',
+    'async function saveVersion(){const v=document.getElementById("v1").value+"."+document.getElementById("v2").value+"."+document.getElementById("v3").value;const r=await fetch("/api/version",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({version:v})});const d=await r.json();const msg=document.getElementById("vMsg");if(d.ok){msg.textContent="Saved! v"+v;setTimeout(()=>msg.textContent="",2000);}else msg.textContent="Error: "+(d.error||"Unknown");}',
+    'fetch("/api/version").then(r=>r.json()).then(d=>{if(!d.version)return;const p=d.version.split(".");if(p[0])document.getElementById("v1").value=p[0];if(p[1])document.getElementById("v2").value=p[1];if(p[2])document.getElementById("v3").value=p[2];});'
   ].join('');
 
-  return '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mixtape Admin</title><style>body{font-family:monospace;background:#1a1816;color:#f2ede4;padding:20px;overflow-x:auto;}h1{color:#e8a33d;}table{width:100%;border-collapse:collapse;margin-top:20px;min-width:700px;}th,td{padding:10px;border:1px solid #3a352f;text-align:left;font-size:13px;vertical-align:middle;}th{background:#221f1c;color:#9a9186;}.pending{color:#e8a33d;}.approved{color:#4a8c8c;}button{background:#4a8c8c;border:none;color:#1a1816;padding:5px 10px;cursor:pointer;border-radius:4px;font-family:monospace;margin-right:4px;margin-top:4px;}.del{background:#c1443c;color:#f2ede4;}.logout{float:right;background:#3a352f;color:#9a9186;}</style></head><body><h1>Mixtape Admin <button class="logout" onclick="location.href=\'/admin/logout\'">Logout</button></h1><table><thead><tr><th>#</th><th>Name</th><th>Email</th><th>Signed up</th><th>Status</th><th>Code</th><th>Storage</th><th>Limit</th><th>Custom MB</th></tr></thead><tbody>'
+  return '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mixtape Admin</title><style>body{font-family:monospace;background:#1a1816;color:#f2ede4;padding:20px;overflow-x:auto;}h1{color:#e8a33d;}table{width:100%;border-collapse:collapse;margin-top:20px;min-width:700px;}th,td{padding:10px;border:1px solid #3a352f;text-align:left;font-size:13px;vertical-align:middle;}th{background:#221f1c;color:#9a9186;}.pending{color:#e8a33d;}.approved{color:#4a8c8c;}button{background:#4a8c8c;border:none;color:#1a1816;padding:5px 10px;cursor:pointer;border-radius:4px;font-family:monospace;margin-right:4px;margin-top:4px;}.del{background:#c1443c;color:#f2ede4;}.logout{float:right;background:#3a352f;color:#9a9186;}</style></head><body><h1>Mixtape Admin <button class="logout" onclick="location.href=\'/admin/logout\'">Logout</button></h1>'
+    + '<div style="margin:16px 0;padding:14px;background:#221f1c;border:1px solid #3a352f;border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
+    + '<span style="color:#9a9186;font-size:13px;">App version:</span>'
+    + '<span style="color:#e8a33d;font-size:18px;font-weight:700;">v.</span>'
+    + '<input id="v1" type="number" min="0" max="99" value="1" style="width:52px;background:#1a1816;border:1px solid #3a352f;border-radius:4px;padding:6px;color:#f2ede4;font-family:monospace;font-size:16px;font-weight:700;text-align:center;">'
+    + '<span style="color:#e8a33d;font-size:18px;font-weight:700;">.</span>'
+    + '<input id="v2" type="number" min="0" max="99" value="0" style="width:52px;background:#1a1816;border:1px solid #3a352f;border-radius:4px;padding:6px;color:#f2ede4;font-family:monospace;font-size:16px;font-weight:700;text-align:center;">'
+    + '<span style="color:#e8a33d;font-size:18px;font-weight:700;">.</span>'
+    + '<input id="v3" type="number" min="0" max="99" value="37" style="width:52px;background:#1a1816;border:1px solid #3a352f;border-radius:4px;padding:6px;color:#f2ede4;font-family:monospace;font-size:16px;font-weight:700;text-align:center;">'
+    + '<button onclick="saveVersion()" style="padding:7px 16px;background:#e8a33d;border:none;border-radius:6px;color:#1a1816;font-weight:700;cursor:pointer;font-family:monospace;">Save</button>'
+    + '<span id="vMsg" style="font-size:12px;color:#4a8c8c;"></span>'
+    + '</div>'
+    + '<table><thead><tr><th>#</th><th>Name</th><th>Email</th><th>Signed up</th><th>Status</th><th>Code</th><th>Storage</th><th>Limit</th><th>Custom MB</th></tr></thead><tbody>'
     + rows
     + '</tbody></table><script>' + scriptContent + '<\/script></body></html>';
 }
@@ -191,6 +205,19 @@ async function handleRequest(request, env) {
       await DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(id).run();
       await DB.prepare("DELETE FROM users WHERE id = ?").bind(id).run();
       return jsonResponse({ ok: true });
+    }
+
+    if (path === "/api/version" && method === "GET") {
+      const row = await DB.prepare("SELECT value FROM settings WHERE key = 'app_version'").first();
+      return jsonResponse({ version: row ? row.value : "1.0.0" });
+    }
+
+    if (path === "/api/version" && method === "POST") {
+      if (!isAdminAuthed(request)) return jsonResponse({ error: "Unauthorized" }, 401);
+      const { version } = await request.json();
+      if (!version) return jsonResponse({ error: "Version required" }, 400);
+      await DB.prepare("INSERT INTO settings (key, value) VALUES ('app_version', ?) ON CONFLICT(key) DO UPDATE SET value = ?").bind(version, version).run();
+      return jsonResponse({ ok: true, version });
     }
 
     if (path === "/api/me") {

@@ -596,7 +596,7 @@
 </div>
 
 <div class="app">
-  <h1>Mixtape <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.35</span></h1>
+  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.37</span></h1>
 
   <div class="deck">
     <div class="style-toggle">
@@ -1002,7 +1002,13 @@
     updateMediaSession();
     renderPlaylist();
     renderDeckCover();
-    if(autoplay){ audio.play(); }
+    if(autoplay){
+      const playWhenReady = () => {
+        audio.play().catch(()=>{});
+        audio.removeEventListener('canplay', playWhenReady);
+      };
+      audio.addEventListener('canplay', playWhenReady);
+    }
   }
 
   function renderDeckCover(){
@@ -1862,6 +1868,11 @@
     if(pickerInited2) updatePickerUI2();
   });
 
+  // Fetch app version from server
+  fetch('/api/version').then(r=>r.json()).then(d=>{
+    if(d.version) document.getElementById('appVersion').textContent = 'v' + d.version;
+  }).catch(()=>{});
+
   // Apply saved accent on load
   try{ const a=localStorage.getItem('mx-accent'); if(a) document.documentElement.style.setProperty('--amber',a); }catch(e){}
   try{ const b=localStorage.getItem('mx-bg'); if(b) document.documentElement.style.setProperty('--bg',b); }catch(e){}
@@ -2146,7 +2157,7 @@
               url: '/api/file/' + encodeURIComponent(rec.cloudKey),
               plays: rec.plays || [{speed:1}],
               pendingSpeed:1, pendingCount:1, pendingCustomActive:false, pendingCustomValue:2,
-              coverUrl: null, skipOnce: false, cloudKey: rec.cloudKey
+              coverUrl: coverMap[rec.name] || null, skipOnce: false, cloudKey: rec.cloudKey
             });
           });
           closeEditPopup();
