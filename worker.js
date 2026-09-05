@@ -126,6 +126,18 @@ var AUTH_HTML = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="vi
 
 export default {
   async fetch(request, env) {
+    try {
+      return await handleRequest(request, env);
+    } catch(err) {
+      return new Response(JSON.stringify({ error: 'Worker error: ' + err.message }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+  }
+};
+
+async function handleRequest(request, env) {
     const DB = env.DB;
     const url = new URL(request.url);
     const path = url.pathname;
@@ -290,5 +302,4 @@ export default {
       return jsonResponse({ error: "Unauthorized" }, 401);
     }
     return env.ASSETS.fetch(request);
-  },
-};
+}
