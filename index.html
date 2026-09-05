@@ -1523,11 +1523,11 @@
           const ct = res.headers.get('content-type') || '';
           if(ct.includes('text/html')){
             failed++;
-            window._uploadFirstError = window._uploadFirstError || 'Session expired — refresh and log in again';
+            window._uploadFirstError = window._uploadFirstError || 'Got HTML back (status '+res.status+') — token: '+_tok.slice(0,8)+'...';
           } else {
             const data = await res.json();
             if(data.ok){ t.cloudKey = data.key; done++; }
-            else { failed++; window._uploadFirstError = window._uploadFirstError || (data.error || 'Server rejected upload'); }
+            else { failed++; window._uploadFirstError = window._uploadFirstError || ('Status '+res.status+': '+(data.error||'unknown')+' | token: '+_tok.slice(0,8)+'...'); }
           }
         } catch(e){ failed++; window._uploadFirstError = window._uploadFirstError || e.message; }
         btn.textContent = 'Uploading ' + (done+failed) + '/' + selected.length + '…';
