@@ -596,7 +596,7 @@
 </div>
 
 <div class="app">
-  <h1>Mixtape <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.30</span></h1>
+  <h1>Mixtape <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.33</span></h1>
 
   <div class="deck">
     <div class="style-toggle">
@@ -1104,7 +1104,7 @@
         onSuccess: function(tag){
           try{
             if(tag.tags.artist){ track.artist = tag.tags.artist; if(currentTrack()===track) document.getElementById('trackArtist').textContent = track.artist; }
-            if(tag.tags.title){ track.name = tag.tags.title; if(currentTrack()===track) trackTitle.textContent = track.name; }
+            // title tag intentionally not used — filename is kept as track name
             const pic = tag.tags.picture;
             if(!pic) return;
             let binary = '';
@@ -2045,7 +2045,12 @@
           btn.disabled = true;
           fetch(url, { credentials: 'same-origin', headers: authHeaders({}) })
             .then(r => r.blob())
-            .then(blob => { try{ extractCover(blob, newCloudTrack); }catch(e){} })
+            .then(blob => {
+              try{
+                const namedBlob = new File([blob], newCloudTrack.name + '.mp3', { type: blob.type || 'audio/mpeg' });
+                extractCover(namedBlob, newCloudTrack);
+              }catch(e){}
+            })
             .catch(()=>{});
         });
       });
