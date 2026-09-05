@@ -1,7 +1,6 @@
 name = "mixtape"
 compatibility_date = "2025-01-01"
 main = "worker.js"
-no_bundle = true
 
 [assets]
 directory = "."
@@ -10,3 +9,7 @@ directory = "."
 binding = "DB"
 database_name = "mixtape-auth"
 database_id = "7d8e4903-2447-40cc-b1b9-279ef071b5f1"
+
+[[r2_buckets]]
+binding = "AUDIO_BUCKET"
+bucket_name = "mixtape-audio"
