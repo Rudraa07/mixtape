@@ -596,7 +596,7 @@
 </div>
 
 <div class="app">
-  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.38</span></h1>
+  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.39</span></h1>
 
   <div class="deck">
     <div class="style-toggle">
@@ -2002,11 +2002,17 @@
       const files = data.files || [];
       // Build a map of cover files for quick lookup
       const coverMap = {};
-      files.filter(f => f.name.endsWith('.cover.jpg')).forEach(f => {
-        const base = f.name.replace('.cover.jpg','');
-        coverMap[base] = '/api/file/' + encodeURIComponent(f.key);
-      });
+      const coverFiles = files.filter(f => f.name.endsWith('.cover.jpg'));
       const audioFiles = files.filter(f => !f.name.endsWith('.cover.jpg'));
+      // Match covers to audio files by stripping both the same way
+      audioFiles.forEach(af => {
+        const afBase = af.name.replace(/\.mp3$/i,'');
+        const match = coverFiles.find(cf => cf.name.replace('.cover.jpg','') === afBase);
+        if(match){
+          const displayName = cleanName(af.key);
+          coverMap[displayName] = '/api/file/' + encodeURIComponent(match.key);
+        }
+      });
       // Decode file names for display
       const cleanName = key => decodeURIComponent(key.split('/').pop().replace(/^\d+_/, '').replace(/\.mp3$/i,'').replace(/\.cover\.jpg$/i,'').trim());
 
