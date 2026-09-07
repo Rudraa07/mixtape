@@ -596,7 +596,7 @@
 </div>
 
 <div class="app">
-  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.39</span></h1>
+  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.40</span></h1>
 
   <div class="deck">
     <div class="style-toggle">
@@ -2001,6 +2001,7 @@
       if(!data.ok){ alert('Could not load files: ' + (data.error || 'Unknown')); return; }
       const files = data.files || [];
       // Build a map of cover files for quick lookup
+      const cleanName = key => decodeURIComponent(key.split('/').pop().replace(/^\d+_/, '').replace(/\.mp3$/i,'').replace(/\.cover\.jpg$/i,'').trim());
       const coverMap = {};
       const coverFiles = files.filter(f => f.name.endsWith('.cover.jpg'));
       const audioFiles = files.filter(f => !f.name.endsWith('.cover.jpg'));
@@ -2014,8 +2015,6 @@
         }
       });
       // Decode file names for display
-      const cleanName = key => decodeURIComponent(key.split('/').pop().replace(/^\d+_/, '').replace(/\.mp3$/i,'').replace(/\.cover\.jpg$/i,'').trim());
-
       // Load saved presets from localStorage
       let cloudPresets = {};
       try{ cloudPresets = JSON.parse(localStorage.getItem('mx-cloud-presets') || '{}'); }catch(e){}
