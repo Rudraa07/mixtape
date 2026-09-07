@@ -596,7 +596,7 @@
 </div>
 
 <div class="app">
-  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.40</span></h1>
+  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.42</span></h1>
 
   <div class="deck">
     <div class="style-toggle">
@@ -1955,10 +1955,10 @@
           if(t.coverUrl && t.coverUrl.startsWith('data:')){
             try{
               const coverBlob = await fetch(t.coverUrl).then(r=>r.blob());
-              const coverName = (t.name + '.cover.jpg').replace(/[^\w\s\.\-]/g, '_');
+              const coverName = fileName.replace(/\.mp3$/i, '.cover.jpg');
               await fetch('/api/upload', {
                 method:'POST', credentials:'same-origin',
-                headers: authHeaders({'Content-Type':'image/jpeg','X-File-Name':coverName}),
+                headers: authHeaders({'Content-Type':'image/jpeg','X-File-Name':coverName, 'X-Cover-For': fileName}),
                 body: coverBlob
               });
             }catch(e){}
@@ -2002,16 +2002,16 @@
       const files = data.files || [];
       // Build a map of cover files for quick lookup
       const cleanName = key => decodeURIComponent(key.split('/').pop().replace(/^\d+_/, '').replace(/\.mp3$/i,'').replace(/\.cover\.jpg$/i,'').trim());
-      const coverMap = {};
       const coverFiles = files.filter(f => f.name.endsWith('.cover.jpg'));
       const audioFiles = files.filter(f => !f.name.endsWith('.cover.jpg'));
-      // Match covers to audio files by stripping both the same way
+      // Build coverMap keyed by audio file key -> cover URL
+      const coverMap = {};
       audioFiles.forEach(af => {
-        const afBase = af.name.replace(/\.mp3$/i,'');
-        const match = coverFiles.find(cf => cf.name.replace('.cover.jpg','') === afBase);
+        // Cover key is audio key with .mp3 replaced by .cover.jpg
+        const expectedCoverName = af.name.replace(/\.mp3$/i, '.cover.jpg');
+        const match = coverFiles.find(cf => cf.name === expectedCoverName);
         if(match){
-          const displayName = cleanName(af.key);
-          coverMap[displayName] = '/api/file/' + encodeURIComponent(match.key);
+          coverMap[af.key] = '/api/file/' + encodeURIComponent(match.key);
         }
       });
       // Decode file names for display
@@ -2081,7 +2081,7 @@
           const name = btn.dataset.cloudname;
           const url = '/api/file/' + encodeURIComponent(key);
           const seq = idCounter++;
-          const rawCoverUrl = coverMap[name] || null;
+          const rawCoverUrl = coverMap[key] || null;
           const newCloudTrack = {
             id: 't' + seq, order: seq, name, artist: '', url,
             plays: [{speed:1}],
@@ -2144,6 +2144,7 @@
           tracks: tracks.map(t => ({
             name: t.name,
             cloudKey: t.cloudKey || null,
+            coverUrl: t.cloudKey ? (coverMap[t.cloudKey] || null) : null,
             plays: t.plays,
             artist: t.artist || ''
           }))
@@ -2180,7 +2181,7 @@
               url: '/api/file/' + encodeURIComponent(rec.cloudKey),
               plays: rec.plays || [{speed:1}],
               pendingSpeed:1, pendingCount:1, pendingCustomActive:false, pendingCustomValue:2,
-              coverUrl: null, skipOnce: false, cloudKey: rec.cloudKey, _rawCoverUrl: coverMap[rec.name] || null
+              coverUrl: null, skipOnce: false, cloudKey: rec.cloudKey, _rawCoverUrl: rec.coverUrl || (rec.cloudKey ? coverMap[rec.cloudKey] : null) || null
             });
           });
           closeEditPopup();
