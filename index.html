@@ -596,7 +596,7 @@
 </div>
 
 <div class="app">
-  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.44</span></h1>
+  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.45</span></h1>
 
   <div class="deck">
     <div class="style-toggle">
@@ -1901,19 +1901,12 @@
     if(pickerInited2) updatePickerUI2();
   });
 
-  // Fetch app version from server
-  fetch('/api/version').then(r=>r.json()).then(d=>{
-    if(d.version) document.getElementById('appVersion').textContent = 'v' + d.version;
-  }).catch(()=>{});
-
   // Apply saved accent on load
   try{ const a=localStorage.getItem('mx-accent'); if(a) document.documentElement.style.setProperty('--amber',a); }catch(e){}
   try{ const b=localStorage.getItem('mx-bg'); if(b) document.documentElement.style.setProperty('--bg',b); }catch(e){}
 
   if('serviceWorker' in navigator){
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.getRegistrations().then(regs => { regs.forEach(r => r.unregister()); });
-    });
+    navigator.serviceWorker.register('/sw.js').catch(()=>{});
   }
 
 
