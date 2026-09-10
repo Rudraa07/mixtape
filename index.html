@@ -596,7 +596,7 @@
 </div>
 
 <div class="app">
-  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.45</span></h1>
+  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.46</span></h1>
 
   <div class="deck">
     <div class="style-toggle">
@@ -1626,33 +1626,19 @@
     navigator.mediaSession.metadata = new MediaMetadata({
       title: t ? t.name : 'Mixtape',
       artist: t ? (t.artist || '') : '',
-      artwork: t && t.coverUrl ? [
-        { src: t.coverUrl, sizes: '96x96', type: 'image/jpeg' },
-        { src: t.coverUrl, sizes: '512x512', type: 'image/jpeg' }
-      ] : []
+      artwork: t && t.coverUrl ? [{ src: t.coverUrl, sizes: '512x512', type: 'image/jpeg' }] : []
     });
     navigator.mediaSession.playbackState = audio.paused ? 'paused' : 'playing';
-    try{
-      if(audio.duration && isFinite(audio.duration)){
-        navigator.mediaSession.setPositionState({
-          duration: audio.duration,
-          playbackRate: audio.playbackRate,
-          position: audio.currentTime
-        });
-      }
-    }catch(e){}
   }
   if('mediaSession' in navigator){
-    navigator.mediaSession.setActionHandler('play', ()=>{ audio.play(); updateMediaSession(); });
-    navigator.mediaSession.setActionHandler('pause', ()=>{ audio.pause(); updateMediaSession(); });
+    navigator.mediaSession.setActionHandler('play', ()=>{ audio.play(); });
+    navigator.mediaSession.setActionHandler('pause', ()=>{ audio.pause(); });
     navigator.mediaSession.setActionHandler('previoustrack', ()=>{ const i = prevPlayableIndex(currentTrackIndex); if(i !== -1) loadTrack(i, 0, true); });
     navigator.mediaSession.setActionHandler('nexttrack', ()=>{ const i = nextPlayableIndex(currentTrackIndex); if(i !== -1) loadTrack(i, 0, true); });
-    navigator.mediaSession.setActionHandler('stop', ()=>{ audio.pause(); audio.currentTime = 0; updateMediaSession(); });
-    navigator.mediaSession.setActionHandler('seekto', (d)=>{ if(d.seekTime) audio.currentTime = d.seekTime; });
+    navigator.mediaSession.setActionHandler('stop', ()=>{ audio.pause(); audio.currentTime = 0; });
   }
   audio.addEventListener('play', updateMediaSession);
   audio.addEventListener('pause', updateMediaSession);
-  audio.addEventListener('loadedmetadata', updateMediaSession);
 
   function authShow(tab){
     document.getElementById('authLoginForm').classList.toggle('active', tab==='login');
