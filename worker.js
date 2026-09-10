@@ -257,7 +257,11 @@ async function handleRequest(request, env) {
         return jsonResponse({ error: "Storage limit exceeded (" + user.storage_limit_mb + " MB)" }, 413);
       }
       const fileName = request.headers.get("X-File-Name") || "unknown";
-      const key = session.email + "/" + Date.now() + "_" + fileName;
+      // Cover files get a stable key (no timestamp) so they can be found deterministically
+      const isCover = fileName.endsWith('.cover.jpg');
+      const key = isCover
+        ? session.email + "/" + fileName
+        : session.email + "/" + Date.now() + "_" + fileName;
       const body = await request.arrayBuffer();
       await env.AUDIO_BUCKET.put(key, body, {
         httpMetadata: { contentType: request.headers.get("Content-Type") || "audio/mpeg" },

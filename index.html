@@ -596,7 +596,7 @@
 </div>
 
 <div class="app">
-  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.42</span></h1>
+  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.43</span></h1>
 
   <div class="deck">
     <div class="style-toggle">
@@ -1948,17 +1948,17 @@
           let blob;
           try{ blob = await fetch(t.url).then(r => { if(!r.ok) throw new Error('blob fetch '+r.status); return r.blob(); }); }
           catch(blobErr){ failed++; window._uploadFirstError = window._uploadFirstError || 'Track "'+t.name+'" file is no longer accessible — re-add it without refreshing the page first'; btn.textContent = 'Uploading '+(done+failed)+'/'+selected.length+'…'; continue; }
-          const fileName = (t.name + '.mp3').replace(/[^\w\s\.\-]/g, '_');
+          const fileBase = (t.name).replace(/[^\w\s\.\-]/g, '_');
+          const fileName = fileBase + '.mp3';
           let _tok=''; try{_tok=localStorage.getItem('mx_token')||'';}catch(e){}
           if(!_tok || _tok==='undefined' || _tok==='null'){ failed++; window._uploadFirstError=window._uploadFirstError||'Bad token in storage ("'+_tok+'") — log out and log in again'; btn.textContent='Uploading '+(done+failed)+'/'+selected.length+'…'; continue; }
-          // Upload cover art as separate file if available
+          // Upload cover art with X-Base-Name so worker uses same key prefix
           if(t.coverUrl && t.coverUrl.startsWith('data:')){
             try{
               const coverBlob = await fetch(t.coverUrl).then(r=>r.blob());
-              const coverName = fileName.replace(/\.mp3$/i, '.cover.jpg');
               await fetch('/api/upload', {
                 method:'POST', credentials:'same-origin',
-                headers: authHeaders({'Content-Type':'image/jpeg','X-File-Name':coverName, 'X-Cover-For': fileName}),
+                headers: authHeaders({'Content-Type':'image/jpeg','X-File-Name': fileBase + '.cover.jpg'}),
                 body: coverBlob
               });
             }catch(e){}
@@ -2004,14 +2004,18 @@
       const cleanName = key => decodeURIComponent(key.split('/').pop().replace(/^\d+_/, '').replace(/\.mp3$/i,'').replace(/\.cover\.jpg$/i,'').trim());
       const coverFiles = files.filter(f => f.name.endsWith('.cover.jpg'));
       const audioFiles = files.filter(f => !f.name.endsWith('.cover.jpg'));
-      // Build coverMap keyed by audio file key -> cover URL
+      // CoverMap: keyed by audio file key, value is stable cover URL
+      // Cover key format: email/name.cover.jpg (no timestamp)
       const coverMap = {};
       audioFiles.forEach(af => {
-        // Cover key is audio key with .mp3 replaced by .cover.jpg
-        const expectedCoverName = af.name.replace(/\.mp3$/i, '.cover.jpg');
-        const match = coverFiles.find(cf => cf.name === expectedCoverName);
+        // Extract base name from audio key: email/timestamp_name.mp3 -> name
+        const baseName = af.name.replace(/\.mp3$/i, '');
+        // Stable cover key: email/baseName.cover.jpg
+        const prefix = af.key.split('/')[0]; // email part
+        const stableCoverKey = prefix + '/' + baseName + '.cover.jpg';
+        const match = coverFiles.find(cf => cf.key === stableCoverKey);
         if(match){
-          coverMap[af.key] = '/api/file/' + encodeURIComponent(match.key);
+          coverMap[af.key] = '/api/file/' + encodeURIComponent(stableCoverKey);
         }
       });
       // Decode file names for display
