@@ -1574,16 +1574,16 @@
       </div>
     `).join('');
 
-    editOverlayContainer.innerHTML = \`
+    editOverlayContainer.innerHTML = `
       <div class="edit-overlay" id="playlistOverlayBackdrop">
         <div class="edit-panel">
           <div class="edit-panel-title">Load a saved playlist</div>
-          \${cloudPresetsHtml}
-          \${itemsHtml}
+          ${cloudPresetsHtml}
+          ${itemsHtml}
           <button class="edit-panel-close" id="playlistOverlayClose">Close</button>
         </div>
       </div>
-    \`;
+    `;
     document.getElementById('playlistOverlayBackdrop').addEventListener('click', (e)=>{
       if(e.target.id === 'playlistOverlayBackdrop') closeEditPopup();
     });
