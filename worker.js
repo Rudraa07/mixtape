@@ -195,6 +195,10 @@ async function handleRequest(request, env) {
       return jsonResponse({ ok: true });
     }
 
+    if (path === "/sw.js" || path === "/manifest.json") {
+      return env.ASSETS.fetch(request);
+    }
+
     if (path === "/api/version" && method === "GET") {
       const row = await DB.prepare("SELECT value FROM settings WHERE key = 'app_version'").first();
       return jsonResponse({ version: row ? row.value : "1.0.0" });
