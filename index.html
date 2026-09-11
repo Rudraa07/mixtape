@@ -550,7 +550,17 @@
     <span class="sub-panel-title">Settings</span>
   </div>
   <div class="sub-panel-body">
-    <p style="color:var(--muted);font-size:13px;">Nothing here yet — coming soon.</p>
+    <div style="margin-bottom:20px;">
+      <div class="theme-section-label">Playback</div>
+      <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--line);cursor:pointer;">
+        <span style="font-size:14px;">Auto-play when tracks added</span>
+        <input type="checkbox" id="settingAutoplay" style="width:18px;height:18px;accent-color:var(--amber);cursor:pointer;">
+      </label>
+      <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;cursor:pointer;">
+        <span style="font-size:14px;">Resume from where you left off</span>
+        <input type="checkbox" id="settingResume" style="width:18px;height:18px;accent-color:var(--amber);cursor:pointer;">
+      </label>
+    </div>
   </div>
 </div>
 
@@ -596,7 +606,7 @@
 </div>
 
 <div class="app">
-  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.47</span></h1>
+  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.48</span></h1>
 
   <div class="deck">
     <div class="style-toggle">
@@ -1010,6 +1020,17 @@
     audio.src = t.url;
     audio.load();
     audio.playbackRate = t.plays[currentPlayIndex].speed;
+    if(appSettings.resume){
+      try{
+        const saved = JSON.parse(localStorage.getItem('mx-resume') || 'null');
+        if(saved && saved.name === t.name && saved.time > 2){
+          audio.addEventListener('canplay', function seekOnce(){
+            audio.currentTime = saved.time;
+            audio.removeEventListener('canplay', seekOnce);
+          }, { once: true });
+        }
+      }catch(e){}
+    }
     trackTitle.textContent = t.name;
     document.getElementById('trackArtist').textContent = t.artist || '';
     updateStatus();
@@ -1118,7 +1139,7 @@
       try{ extractCover(f, newTrack); }catch(err){ /* cover extraction failing should never block adding the song */ }
     });
     renderPlaylist();
-    if(currentTrackIndex === -1 && tracks.length > 0){ loadTrack(0, 0, false); }
+    if(currentTrackIndex === -1 && tracks.length > 0){ loadTrack(0, 0, appSettings.autoplay); }
     fileInput.value = '';
   });
 
@@ -1164,6 +1185,12 @@
     tonearm.classList.remove('playing');
   });
 
+  // Resume position save
+  audio.addEventListener('timeupdate', ()=>{
+    if(appSettings.resume && currentTrackIndex !== -1 && audio.currentTime > 2){
+      try{ localStorage.setItem('mx-resume', JSON.stringify({ name: currentTrack().name, time: audio.currentTime })); }catch(e){}
+    }
+  });
   audio.addEventListener('timeupdate', ()=>{
     if(isSeeking) return;
     const pct = audio.duration ? (audio.currentTime/audio.duration)*100 : 0;
@@ -1534,19 +1561,96 @@
         `).join('')
       : `<div class="saved-list-empty">No saved playlists yet.</div>`;
 
-    editOverlayContainer.innerHTML = `
+    let cloudPresets = {};
+    try{ cloudPresets = JSON.parse(localStorage.getItem('mx-cloud-presets') || '{}'); }catch(e){}
+    const cloudPresetNames = Object.keys(cloudPresets);
+    const cloudPresetsHtml = cloudPresetNames.length === 0 ? '' : cloudPresetNames.map(n => `
+      <div class="saved-list-item" data-cloudpreset="${n}">
+        <div>
+          <div class="saved-list-name">☁️ ${n}</div>
+          <div class="saved-list-meta">${cloudPresets[n].tracks.length} track${cloudPresets[n].tracks.length===1?'':'s'} · Cloud</div>
+        </div>
+        <button class="saved-list-delete" data-deletecloudpreset="${n}">✕</button>
+      </div>
+    `).join('');
+
+    editOverlayContainer.innerHTML = \`
       <div class="edit-overlay" id="playlistOverlayBackdrop">
         <div class="edit-panel">
           <div class="edit-panel-title">Load a saved playlist</div>
-          ${itemsHtml}
+          \${cloudPresetsHtml}
+          \${itemsHtml}
           <button class="edit-panel-close" id="playlistOverlayClose">Close</button>
         </div>
       </div>
-    `;
+    \`;
     document.getElementById('playlistOverlayBackdrop').addEventListener('click', (e)=>{
       if(e.target.id === 'playlistOverlayBackdrop') closeEditPopup();
     });
     document.getElementById('playlistOverlayClose').addEventListener('click', closeEditPopup);
+
+    // Cloud preset load from load playlist panel
+    editOverlayContainer.querySelectorAll('[data-cloudpreset]').forEach(el=>{
+      el.addEventListener('click', async ()=>{
+        const name = el.dataset.cloudpreset;
+        const preset = cloudPresets[name];
+        if(!preset) return;
+        if(tracks.length > 0 && !confirm('Replace current playlist with "'+name+'"?')) return;
+        closeEditPopup();
+        // Open cloud files to get the file list for cover mapping
+        const res = await fetch('/api/files', { credentials:'same-origin', headers: authHeaders({}) });
+        const data = await res.json();
+        const files = data.files || [];
+        const coverFiles = files.filter(f => f.name.endsWith('.cover.jpg'));
+        const audioFiles = files.filter(f => !f.name.endsWith('.cover.jpg'));
+        const cMap = {};
+        audioFiles.forEach(af => {
+          const baseName = af.name.replace(/\.mp3$/i, '');
+          const prefix = af.key.split('/')[0];
+          const stableCoverKey = prefix + '/' + baseName + '.cover.jpg';
+          if(coverFiles.find(cf => cf.key === stableCoverKey)){
+            cMap[af.key] = '/api/file/' + encodeURIComponent(stableCoverKey);
+          }
+        });
+        audio.pause(); audio.removeAttribute('src');
+        tracks = []; currentTrackIndex = -1; currentPlayIndex = 0; expandedTrackId = null;
+        preset.tracks.forEach(rec => {
+          if(!rec.cloudKey) return;
+          const file = files.find(f => f.key === rec.cloudKey);
+          if(!file) return;
+          const seq = idCounter++;
+          tracks.push({
+            id: 't'+seq, order: seq, name: rec.name, artist: rec.artist||'',
+            url: '/api/file/' + encodeURIComponent(rec.cloudKey),
+            plays: rec.plays || [{speed:1}],
+            pendingSpeed:1, pendingCount:1, pendingCustomActive:false, pendingCustomValue:2,
+            coverUrl: null, skipOnce: false, cloudKey: rec.cloudKey,
+            _rawCoverUrl: rec.coverUrl || (rec.cloudKey ? cMap[rec.cloudKey] : null) || null
+          });
+        });
+        renderPlaylist(); renderDeckCover();
+        trackTitle.textContent = tracks.length ? 'Select a track' : 'No track loaded';
+        playStatus.textContent = tracks.length ? 'Preset loaded' : 'Load a file to begin';
+        tracks.forEach(t => {
+          if(t._rawCoverUrl){
+            authedImgUrl(t._rawCoverUrl).then(blobUrl => {
+              if(blobUrl){ t.coverUrl = blobUrl; delete t._rawCoverUrl; renderPlaylist(); if(currentTrack()===t) renderDeckCover(); }
+            });
+          }
+        });
+      });
+    });
+
+    editOverlayContainer.querySelectorAll('[data-deletecloudpreset]').forEach(el=>{
+      el.addEventListener('click', e=>{
+        e.stopPropagation();
+        const name = el.dataset.deletecloudpreset;
+        if(!confirm('Delete cloud preset "'+name+'"?')) return;
+        delete cloudPresets[name];
+        try{ localStorage.setItem('mx-cloud-presets', JSON.stringify(cloudPresets)); }catch(e){}
+        el.closest('.saved-list-item').remove();
+      });
+    });
     editOverlayContainer.querySelectorAll('.saved-list-name, .saved-list-meta').forEach(el=>{
       el.addEventListener('click', async ()=>{
         const name = el.closest('.saved-list-item').dataset.loadname;
@@ -1684,13 +1788,37 @@
   const settingsPanel = document.getElementById('settingsPanel');
   const themePanel = document.getElementById('themePanel');
 
+  // Settings
+  const SETTINGS_DEFAULTS = { autoplay: false, resume: false };
+  let appSettings = SETTINGS_DEFAULTS;
+  try{ appSettings = Object.assign({}, SETTINGS_DEFAULTS, JSON.parse(localStorage.getItem('mx-settings') || '{}')); }catch(e){}
+
+  function saveSettings(){
+    try{ localStorage.setItem('mx-settings', JSON.stringify(appSettings)); }catch(e){}
+  }
+
+  function initSettings(){
+    document.getElementById('settingAutoplay').checked = appSettings.autoplay;
+    document.getElementById('settingResume').checked = appSettings.resume;
+    document.getElementById('settingAutoplay').addEventListener('change', e=>{
+      appSettings.autoplay = e.target.checked; saveSettings();
+    });
+    document.getElementById('settingResume').addEventListener('change', e=>{
+      appSettings.resume = e.target.checked; saveSettings();
+    });
+  }
+
+  document.getElementById('drawerSettingsBtn').addEventListener('click', ()=>{
+    settingsPanel.classList.add('open'); initSettings();
+  });
+
   function openDrawer(){ sideDrawer.classList.add('open'); drawerBackdrop.classList.add('open'); }
   function closeDrawer(){ sideDrawer.classList.remove('open'); drawerBackdrop.classList.remove('open'); settingsPanel.classList.remove('open'); themePanel.classList.remove('open'); }
 
   hamburgerBtn.addEventListener('click', openDrawer);
   drawerBackdrop.addEventListener('click', closeDrawer);
 
-  document.getElementById('drawerSettingsBtn').addEventListener('click', ()=>{ settingsPanel.classList.add('open'); });
+
   document.getElementById('settingsBack').addEventListener('click', ()=>{ settingsPanel.classList.remove('open'); });
 
   document.getElementById('drawerThemeBtn').addEventListener('click', ()=>{ themePanel.classList.add('open'); initColorPicker(); initColorPicker2(); });
@@ -2061,7 +2189,8 @@
         <div class="edit-overlay" id="cloudFilesBackdrop">
           <div class="edit-panel" style="max-width:380px;">
             <div class="edit-panel-title">My cloud files</div>
-            <div style="max-height:420px;overflow-y:auto;">
+            <input type="text" id="cloudSearchInput" placeholder="Search files…" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;color:var(--cream);font-family:'JetBrains Mono',monospace;font-size:13px;margin-bottom:10px;">
+            <div style="max-height:380px;overflow-y:auto;" id="cloudFilesList">
               ${presetsHtml}
               ${itemsHtml}
             </div>
@@ -2074,6 +2203,13 @@
         </div>
       `;
       document.getElementById('cloudFilesBackdrop').addEventListener('click', e=>{ if(e.target.id==='cloudFilesBackdrop') closeEditPopup(); });
+      document.getElementById('cloudSearchInput').addEventListener('input', e=>{
+        const q = e.target.value.toLowerCase();
+        document.querySelectorAll('#cloudFilesList .saved-list-item').forEach(item=>{
+          const name = item.querySelector('.saved-list-name');
+          if(name) item.style.display = name.textContent.toLowerCase().includes(q) ? '' : 'none';
+        });
+      });
       document.getElementById('cloudFilesClose').addEventListener('click', closeEditPopup);
 
       // Add track

