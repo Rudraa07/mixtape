@@ -606,7 +606,7 @@
 </div>
 
 <div class="app">
-  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.48</span></h1>
+  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.49</span></h1>
 
   <div class="deck">
     <div class="style-toggle">
@@ -1797,19 +1797,14 @@
     try{ localStorage.setItem('mx-settings', JSON.stringify(appSettings)); }catch(e){}
   }
 
-  function initSettings(){
-    document.getElementById('settingAutoplay').checked = appSettings.autoplay;
-    document.getElementById('settingResume').checked = appSettings.resume;
-    document.getElementById('settingAutoplay').addEventListener('change', e=>{
-      appSettings.autoplay = e.target.checked; saveSettings();
-    });
-    document.getElementById('settingResume').addEventListener('change', e=>{
-      appSettings.resume = e.target.checked; saveSettings();
-    });
-  }
+  // Wire settings checkboxes once at startup
+  const _autoplayCb = document.getElementById('settingAutoplay');
+  const _resumeCb = document.getElementById('settingResume');
+  if(_autoplayCb){ _autoplayCb.checked = appSettings.autoplay; _autoplayCb.addEventListener('change', e=>{ appSettings.autoplay = e.target.checked; saveSettings(); }); }
+  if(_resumeCb){ _resumeCb.checked = appSettings.resume; _resumeCb.addEventListener('change', e=>{ appSettings.resume = e.target.checked; saveSettings(); }); }
 
   document.getElementById('drawerSettingsBtn').addEventListener('click', ()=>{
-    settingsPanel.classList.add('open'); initSettings();
+    settingsPanel.classList.add('open');
   });
 
   function openDrawer(){ sideDrawer.classList.add('open'); drawerBackdrop.classList.add('open'); }
