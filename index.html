@@ -529,6 +529,9 @@
 <div class="side-drawer" id="sideDrawer">
   <div class="drawer-header">Mixtape</div>
   <nav class="drawer-nav">
+    <button class="drawer-item" id="drawerFoldersBtn">
+      <span class="drawer-item-icon">📁</span> Watched folders
+    </button>
     <button class="drawer-item" id="drawerLibraryBtn">
       <span class="drawer-item-icon">📚</span> Global library
     </button>
@@ -609,7 +612,7 @@
 </div>
 
 <div class="app">
-  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.50</span></h1>
+  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.51</span></h1>
 
   <div class="deck">
     <div class="style-toggle">
@@ -1281,10 +1284,11 @@
   const DB_NAME = 'mixtapeDB';
   const STORE_NAME = 'playlists';
   const LIB_STORE = 'library';
+  const FOLDER_STORE = 'folders';
 
   function openDB(){
     return new Promise((resolve, reject)=>{
-      const req = indexedDB.open(DB_NAME, 2);
+      const req = indexedDB.open(DB_NAME, 3);
       req.onupgradeneeded = (e)=>{
         const db = e.target.result;
         if(!db.objectStoreNames.contains(STORE_NAME)){
@@ -1292,6 +1296,9 @@
         }
         if(!db.objectStoreNames.contains(LIB_STORE)){
           db.createObjectStore(LIB_STORE, { keyPath: 'key' });
+        }
+        if(!db.objectStoreNames.contains(FOLDER_STORE)){
+          db.createObjectStore(FOLDER_STORE, { keyPath: 'id' });
         }
       };
       req.onsuccess = ()=> resolve(req.result);
@@ -1434,7 +1441,7 @@
   async function openLibrary(){
     let items = [];
     try{ items = await libGetAll(); }catch(e){}
-    items.sort((a,b)=> b.addedAt - a.addedAt);
+    items.sort((a,b)=> (a.name||'').localeCompare(b.name||'', undefined, { sensitivity:'base', numeric:true }));
     editOverlayContainer.innerHTML = `
       <div class="edit-overlay" id="libBackdrop">
         <div class="edit-panel" style="max-width:380px;">
@@ -1459,7 +1466,7 @@
         <div class="saved-list-item">
           <div style="min-width:0;flex:1;">
             <div class="saved-list-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.name}</div>
-            <div class="saved-list-meta">${r.artist || (r.audioBlob ? 'Local file' : (r.cloudKey ? 'Cloud' : 'Online'))}</div>
+            <div class="saved-list-meta">${r.artist || (r.folderName ? '📁 '+r.folderName : r.audioBlob ? 'Local file' : (r.cloudKey ? 'Cloud' : 'Online'))}</div>
           </div>
           <div style="display:flex;gap:6px;flex-shrink:0;">
             <button class="jamendo-add-btn" data-libadd="${i}">+ Add</button>
@@ -1467,13 +1474,21 @@
           </div>
         </div>`).join('');
       listEl.querySelectorAll('[data-libadd]').forEach(btn=>{
-        btn.addEventListener('click', ()=>{
+        btn.addEventListener('click', async ()=>{
           const rec = items[parseInt(btn.dataset.libadd)];
           if(!rec) return;
+          let url;
+          if(rec.fileHandle){
+            if(!(await ensurePerm(rec.fileHandle, true))){ alert('Allow access to the folder to play this song.'); return; }
+            try{ url = URL.createObjectURL(await rec.fileHandle.getFile()); }
+            catch(e){ alert('This file is no longer in the folder.'); return; }
+          } else {
+            url = rec.audioBlob ? URL.createObjectURL(rec.audioBlob) : rec.remoteUrl;
+          }
           const seq = idCounter++;
           tracks.push({
             id: 't'+seq, order: seq, name: rec.name, artist: rec.artist || '',
-            url: rec.audioBlob ? URL.createObjectURL(rec.audioBlob) : rec.remoteUrl,
+            url,
             plays: [{ speed: 1 }],
             pendingSpeed:1, pendingCount:1, pendingCustomActive:false, pendingCustomValue:2,
             coverUrl: rec.coverDataUrl || null, skipOnce: false,
@@ -1502,6 +1517,164 @@
   }
   document.getElementById('libraryBtn').addEventListener('click', openLibrary);
   document.getElementById('drawerLibraryBtn').addEventListener('click', ()=>{ closeDrawer(); openLibrary(); });
+
+  // ---- Watched folders (auto-add songs to the global library) ----
+  const MAX_FOLDERS = 3;
+  const AUDIO_EXT = /\.(mp3|m4a|aac|wav|flac|ogg|opus|wma)$/i;
+  const fsSupported = 'showDirectoryPicker' in window;
+
+  async function folderTx(mode, fn){
+    const db = await openDB();
+    return new Promise((resolve, reject)=>{
+      const tx = db.transaction(FOLDER_STORE, mode);
+      const req = fn(tx.objectStore(FOLDER_STORE));
+      tx.oncomplete = ()=> resolve(req ? req.result : undefined);
+      tx.onerror = ()=> reject(tx.error);
+    });
+  }
+  const foldersGetAll = () => folderTx('readonly', st => st.getAll());
+  const folderPut = rec => folderTx('readwrite', st => st.put(rec));
+  const folderDelete = id => folderTx('readwrite', st => st.delete(id));
+
+  function readTags(file){
+    return new Promise(resolve=>{
+      if(typeof jsmediatags === 'undefined') return resolve({});
+      try{
+        jsmediatags.read(file, {
+          onSuccess: tag => {
+            const out = { artist: tag.tags.artist || '' };
+            const pic = tag.tags.picture;
+            if(pic){
+              try{
+                let b = ''; for(let i=0;i<pic.data.length;i++) b += String.fromCharCode(pic.data[i]);
+                out.cover = `data:${pic.format};base64,${window.btoa(b)}`;
+              }catch(e){}
+            }
+            resolve(out);
+          },
+          onError: ()=> resolve({})
+        });
+      }catch(e){ resolve({}); }
+    });
+  }
+
+  async function* walkDir(dirHandle, path){
+    for await (const entry of dirHandle.values()){
+      const p = path ? path + '/' + entry.name : entry.name;
+      if(entry.kind === 'file'){ if(AUDIO_EXT.test(entry.name)) yield { handle: entry, path: p }; }
+      else yield* walkDir(entry, p);
+    }
+  }
+
+  async function ensurePerm(handle, ask){
+    try{
+      let p = await handle.queryPermission({ mode:'read' });
+      if(p === 'granted') return true;
+      if(ask){ p = await handle.requestPermission({ mode:'read' }); return p === 'granted'; }
+    }catch(e){}
+    return false;
+  }
+
+  async function scanFolder(f){
+    let added = 0;
+    try{
+      for await (const { handle, path } of walkDir(f.handle, '')){
+        const key = `d|${f.id}|${path}`;
+        try{
+          if(await libGet(key)) continue;
+          const file = await handle.getFile();
+          const tags = await readTags(file);
+          await libPut({
+            key, name: file.name.replace(/\.[^/.]+$/, ''), artist: tags.artist || '',
+            fileHandle: handle, folderId: f.id, folderName: f.name,
+            audioBlob: null, remoteUrl: null, cloudKey: null,
+            coverDataUrl: tags.cover || null, addedAt: Date.now()
+          });
+          added++;
+        }catch(e){}
+      }
+    }catch(e){}
+    return added;
+  }
+
+  let scanning = false;
+  async function scanAllFolders(ask){
+    if(scanning || !fsSupported) return 0;
+    scanning = true;
+    let total = 0;
+    try{
+      const fs = await foldersGetAll();
+      for(const f of fs){ if(await ensurePerm(f.handle, ask)) total += await scanFolder(f); }
+    }catch(e){}
+    scanning = false;
+    return total;
+  }
+
+  async function openFolders(msg){
+    let fs = [];
+    try{ fs = await foldersGetAll(); }catch(e){}
+    const rows = await Promise.all(fs.map(async f => ({ f, ok: await ensurePerm(f.handle, false) })));
+    editOverlayContainer.innerHTML = `
+      <div class="edit-overlay" id="fldBackdrop">
+        <div class="edit-panel" style="max-width:380px;">
+          <div class="edit-panel-title">Watched folders · ${fs.length}/${MAX_FOLDERS}</div>
+          ${!fsSupported ? '<div class="saved-list-empty">This browser can’t watch folders. Use Chrome or Edge.</div>' : ''}
+          ${rows.map(({f,ok}) => `
+            <div class="saved-list-item">
+              <div style="min-width:0;flex:1;">
+                <div class="saved-list-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📁 ${f.name}</div>
+                <div class="saved-list-meta">${ok ? 'Watching' : 'Tap Scan to allow access'}</div>
+              </div>
+              <div style="display:flex;gap:6px;flex-shrink:0;">
+                <button class="jamendo-add-btn" data-fscan="${f.id}">Scan</button>
+                <button class="jamendo-add-btn" data-fdel="${f.id}" style="color:var(--red);border-color:var(--red);">✕</button>
+              </div>
+            </div>`).join('')}
+          ${msg ? `<div class="saved-list-meta" style="text-align:center;margin:8px 0;" id="fldMsg">${msg}</div>` : '<div id="fldMsg"></div>'}
+          ${fsSupported && fs.length < MAX_FOLDERS ? '<button class="add-repeat-btn" id="fldAddBtn">+ Add folder</button>' : ''}
+          <button class="edit-panel-close" id="fldClose">Close</button>
+        </div>
+      </div>`;
+    document.getElementById('fldBackdrop').addEventListener('click', e=>{ if(e.target.id==='fldBackdrop') closeEditPopup(); });
+    document.getElementById('fldClose').addEventListener('click', closeEditPopup);
+    const msgEl = document.getElementById('fldMsg');
+
+    const addBtn = document.getElementById('fldAddBtn');
+    if(addBtn) addBtn.addEventListener('click', async ()=>{
+      let h;
+      try{ h = await window.showDirectoryPicker({ mode:'read' }); }catch(e){ return; }
+      for(const f of fs){ try{ if(await f.handle.isSameEntry(h)){ msgEl.textContent = 'That folder is already added.'; return; } }catch(e){} }
+      const rec = { id: 'fo' + Date.now(), name: h.name, handle: h };
+      await folderPut(rec);
+      msgEl.textContent = 'Scanning…';
+      const n = await scanFolder(rec);
+      openFolders(`Added · ${n} song${n===1?'':'s'} imported to library`);
+    });
+
+    editOverlayContainer.querySelectorAll('[data-fscan]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const f = fs.find(x => x.id === btn.dataset.fscan);
+        if(!f) return;
+        if(!(await ensurePerm(f.handle, true))){ msgEl.textContent = 'Access not granted.'; return; }
+        msgEl.textContent = 'Scanning…';
+        const n = await scanFolder(f);
+        openFolders(`Scanned · ${n} new song${n===1?'':'s'}`);
+      });
+    });
+    editOverlayContainer.querySelectorAll('[data-fdel]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        if(!confirm('Stop watching this folder? Songs already in the library stay.')) return;
+        await folderDelete(btn.dataset.fdel);
+        openFolders('Folder removed');
+      });
+    });
+  }
+  document.getElementById('drawerFoldersBtn').addEventListener('click', ()=>{ closeDrawer(); openFolders(); });
+
+  // auto-scan: on load, when the app regains focus, and every minute
+  scanAllFolders(false);
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) scanAllFolders(false); });
+  setInterval(()=>{ if(!document.hidden) scanAllFolders(false); }, 60000);
 
   const savePlaylistBtn = document.getElementById('savePlaylistBtn');
   const loadPlaylistBtn = document.getElementById('loadPlaylistBtn');
