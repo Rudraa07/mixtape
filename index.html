@@ -529,6 +529,9 @@
 <div class="side-drawer" id="sideDrawer">
   <div class="drawer-header">Mixtape</div>
   <nav class="drawer-nav">
+    <button class="drawer-item" id="drawerLibraryBtn">
+      <span class="drawer-item-icon">📚</span> Global library
+    </button>
     <button class="drawer-item" id="drawerSettingsBtn">
       <span class="drawer-item-icon">⚙️</span> Settings
     </button>
@@ -606,7 +609,7 @@
 </div>
 
 <div class="app">
-  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.49</span></h1>
+  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.50</span></h1>
 
   <div class="deck">
     <div class="style-toggle">
@@ -686,6 +689,9 @@
       <div class="playlist-io-row">
         <button class="playlist-io-btn" id="cloudUploadBtn">☁️ Upload to cloud</button>
         <button class="playlist-io-btn" id="cloudFilesBtn">📡 My cloud files</button>
+      </div>
+      <div class="playlist-io-row">
+        <button class="playlist-io-btn" id="libraryBtn">📚 Global library</button>
       </div>
     </div>
   </div>
@@ -1136,6 +1142,7 @@
         originalOrder: idCounter
       };
       tracks.push(newTrack);
+      addToLibrary(newTrack, f);
       try{ extractCover(f, newTrack); }catch(err){ /* cover extraction failing should never block adding the song */ }
     });
     renderPlaylist();
@@ -1158,6 +1165,7 @@
             track.coverUrl = `data:${pic.format};base64,${window.btoa(binary)}`;
             if(currentTrack() === track) renderDeckCover();
             renderPlaylist();
+            updateLibraryMeta(track);
           }catch(err){ /* malformed tag data — just skip the cover */ }
         },
         onError: function(){ /* no embedded art found — user can add one manually */ }
@@ -1272,14 +1280,18 @@
   // ---- Saved playlists (IndexedDB — stores the actual audio & cover files) ----
   const DB_NAME = 'mixtapeDB';
   const STORE_NAME = 'playlists';
+  const LIB_STORE = 'library';
 
   function openDB(){
     return new Promise((resolve, reject)=>{
-      const req = indexedDB.open(DB_NAME, 1);
+      const req = indexedDB.open(DB_NAME, 2);
       req.onupgradeneeded = (e)=>{
         const db = e.target.result;
         if(!db.objectStoreNames.contains(STORE_NAME)){
           db.createObjectStore(STORE_NAME, { keyPath: 'name' });
+        }
+        if(!db.objectStoreNames.contains(LIB_STORE)){
+          db.createObjectStore(LIB_STORE, { keyPath: 'key' });
         }
       };
       req.onsuccess = ()=> resolve(req.result);
@@ -1375,6 +1387,122 @@
     renderDeckCover();
   }
 
+  // ---- Global library (every added song is remembered here) ----
+  async function libTx(mode, fn){
+    const db = await openDB();
+    return new Promise((resolve, reject)=>{
+      const tx = db.transaction(LIB_STORE, mode);
+      const req = fn(tx.objectStore(LIB_STORE));
+      tx.oncomplete = ()=> resolve(req ? req.result : undefined);
+      tx.onerror = ()=> reject(tx.error);
+    });
+  }
+  const libGet = key => libTx('readonly', st => st.get(key));
+  const libGetAll = () => libTx('readonly', st => st.getAll());
+  const libPut = rec => libTx('readwrite', st => st.put(rec));
+  const libDelete = key => libTx('readwrite', st => st.delete(key));
+
+  function addToLibrary(track, file){
+    const key = file ? `f|${file.name}|${file.size}` : (track.cloudKey ? 'c|'+track.cloudKey : 'u|'+track.url);
+    track.libKey = key;
+    track._libReady = (async ()=>{
+      try{
+        if(await libGet(key)) return;
+        await libPut({
+          key, name: track.name, artist: track.artist || '',
+          audioBlob: file || null, remoteUrl: file ? null : track.url,
+          cloudKey: track.cloudKey || null,
+          coverDataUrl: (track.coverUrl && track.coverUrl.startsWith('data:')) ? track.coverUrl : null,
+          addedAt: Date.now()
+        });
+      }catch(e){ /* library is best-effort */ }
+    })();
+  }
+
+  async function updateLibraryMeta(track){
+    if(!track.libKey) return;
+    try{
+      await track._libReady;
+      const rec = await libGet(track.libKey);
+      if(!rec) return;
+      rec.artist = track.artist || '';
+      if(track.coverUrl && track.coverUrl.startsWith('data:')) rec.coverDataUrl = track.coverUrl;
+      await libPut(rec);
+    }catch(e){}
+  }
+
+  async function openLibrary(){
+    let items = [];
+    try{ items = await libGetAll(); }catch(e){}
+    items.sort((a,b)=> b.addedAt - a.addedAt);
+    editOverlayContainer.innerHTML = `
+      <div class="edit-overlay" id="libBackdrop">
+        <div class="edit-panel" style="max-width:380px;">
+          <div class="edit-panel-title">Global library · ${items.length} song${items.length===1?'':'s'}</div>
+          <input type="text" id="libSearch" placeholder="Search library…" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;color:var(--cream);font-family:'JetBrains Mono',monospace;font-size:13px;margin-bottom:10px;">
+          <div style="max-height:380px;overflow-y:auto;" id="libList"></div>
+          <button class="edit-panel-close" id="libClose">Close</button>
+        </div>
+      </div>`;
+    document.getElementById('libBackdrop').addEventListener('click', e=>{ if(e.target.id==='libBackdrop') closeEditPopup(); });
+    document.getElementById('libClose').addEventListener('click', closeEditPopup);
+    const listEl = document.getElementById('libList');
+
+    const render = ()=>{
+      const q = document.getElementById('libSearch').value.toLowerCase();
+      const shown = items.map((r,i)=>({r,i})).filter(x => (x.r.name+' '+(x.r.artist||'')).toLowerCase().includes(q));
+      if(shown.length === 0){
+        listEl.innerHTML = '<div class="saved-list-empty">' + (items.length ? 'No matches.' : 'Library is empty — songs you add show up here.') + '</div>';
+        return;
+      }
+      listEl.innerHTML = shown.map(({r,i}) => `
+        <div class="saved-list-item">
+          <div style="min-width:0;flex:1;">
+            <div class="saved-list-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.name}</div>
+            <div class="saved-list-meta">${r.artist || (r.audioBlob ? 'Local file' : (r.cloudKey ? 'Cloud' : 'Online'))}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0;">
+            <button class="jamendo-add-btn" data-libadd="${i}">+ Add</button>
+            <button class="jamendo-add-btn" data-libdel="${i}" style="color:var(--red);border-color:var(--red);">✕</button>
+          </div>
+        </div>`).join('');
+      listEl.querySelectorAll('[data-libadd]').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          const rec = items[parseInt(btn.dataset.libadd)];
+          if(!rec) return;
+          const seq = idCounter++;
+          tracks.push({
+            id: 't'+seq, order: seq, name: rec.name, artist: rec.artist || '',
+            url: rec.audioBlob ? URL.createObjectURL(rec.audioBlob) : rec.remoteUrl,
+            plays: [{ speed: 1 }],
+            pendingSpeed:1, pendingCount:1, pendingCustomActive:false, pendingCustomValue:2,
+            coverUrl: rec.coverDataUrl || null, skipOnce: false,
+            cloudKey: rec.cloudKey || undefined, libKey: rec.key
+          });
+          renderPlaylist();
+          if(currentTrackIndex === -1) loadTrack(0, 0, appSettings.autoplay);
+          btn.textContent = 'Added ✓';
+          btn.disabled = true;
+        });
+      });
+      listEl.querySelectorAll('[data-libdel]').forEach(btn=>{
+        btn.addEventListener('click', async ()=>{
+          const i = parseInt(btn.dataset.libdel);
+          const rec = items[i];
+          if(!rec || !confirm('Remove "'+rec.name+'" from the library?')) return;
+          try{ await libDelete(rec.key); }catch(e){}
+          items[i] = { name:'', key:rec.key, _gone:true };
+          items = items.filter(x => !x._gone);
+          render();
+        });
+      });
+    };
+    document.getElementById('libSearch').addEventListener('input', render);
+    render();
+  }
+  document.getElementById('libraryBtn').addEventListener('click', openLibrary);
+  document.getElementById('drawerLibraryBtn').addEventListener('click', ()=>{ closeDrawer(); openLibrary(); });
+
   const savePlaylistBtn = document.getElementById('savePlaylistBtn');
   const loadPlaylistBtn = document.getElementById('loadPlaylistBtn');
 
@@ -1441,6 +1569,7 @@
       coverUrl: t.artUrl || null,
       skipOnce: false
     });
+    addToLibrary(tracks[tracks.length-1], null);
     renderPlaylist();
     if(currentTrackIndex === -1){ loadTrack(0, 0, false); }
   }
@@ -2222,6 +2351,7 @@
             coverUrl: null, skipOnce: false, cloudKey: key
           };
           tracks.push(newCloudTrack);
+          addToLibrary(newCloudTrack, null);
           renderPlaylist();
           if(currentTrackIndex === -1) loadTrack(0, 0, false);
           btn.textContent = 'Added ✓';
