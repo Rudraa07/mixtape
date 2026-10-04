@@ -612,7 +612,7 @@
 </div>
 
 <div class="app">
-  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.51</span></h1>
+  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.52</span></h1>
 
   <div class="deck">
     <div class="style-toggle">
@@ -791,6 +791,7 @@
   let isSeeking = false;
   let expandedTrackId = null;
   let idCounter = 0;
+  let pendingSeek = null, restoring = true, unavailKeys = new Set();
 
   function fmtTime(sec){
     if(!isFinite(sec)) return '0:00';
@@ -811,6 +812,7 @@
       const isOpen = t.id === expandedTrackId;
       const badge = t.plays.length > 1 ? `<span class="repeat-badge">×${t.plays.length}</span>` : '';
       const skipBadge = t.skipOnce ? `<span class="skip-badge">SKIP</span>` : '';
+      const unBadge = (t.libKey && unavailKeys.has(t.libKey)) ? `<span class="skip-badge">UNAVAILABLE</span>` : '';
       const chips = t.plays.map((p, pi) => `
         <div class="play-chip">
           <button class="play-chip-label" data-track="${t.id}" data-editplay="${pi}">${pi+1}: ${p.speed}×</button>
@@ -832,7 +834,7 @@
             ${thumb}
             <span class="track-name">${t.name}</span>
             ${badge}
-            ${skipBadge}
+            ${skipBadge}${unBadge}
             <div class="track-actions">
               <div class="order-btns">
                 <button class="order-btn" data-move="${t.id}" data-dir="-1" ${i===0?'disabled':''}>▲</button>
@@ -1023,22 +1025,25 @@
 
   function loadTrack(index, playIndex, autoplay){
     if(index < 0 || index >= tracks.length) return;
+    const t0 = tracks[index];
+    if(!t0.url){
+      libGet(t0.libKey || '').then(r => r ? resolveRecUrl(normalizeRec(r), true) : null).then(url=>{
+        const i = tracks.indexOf(t0);
+        if(i === -1) return;
+        if(url){ t0.url = url; loadTrack(i, playIndex, autoplay); }
+        else { playStatus.textContent = 'Song unavailable — tap it to retry'; }
+      }).catch(()=>{});
+      return;
+    }
     currentTrackIndex = index;
     currentPlayIndex = playIndex || 0;
     const t = tracks[index];
     audio.src = t.url;
     audio.load();
     audio.playbackRate = t.plays[currentPlayIndex].speed;
-    if(appSettings.resume){
-      try{
-        const saved = JSON.parse(localStorage.getItem('mx-resume') || 'null');
-        if(saved && saved.name === t.name && saved.time > 2){
-          audio.addEventListener('canplay', function seekOnce(){
-            audio.currentTime = saved.time;
-            audio.removeEventListener('canplay', seekOnce);
-          }, { once: true });
-        }
-      }catch(e){}
+    if(pendingSeek && pendingSeek.key === t.libKey && pendingSeek.playIndex === currentPlayIndex){
+      const ps = pendingSeek; pendingSeek = null;
+      audio.addEventListener('canplay', ()=>{ try{ audio.currentTime = ps.time; }catch(e){} }, { once: true });
     }
     trackTitle.textContent = t.name;
     document.getElementById('trackArtist').textContent = t.artist || '';
@@ -1127,6 +1132,7 @@
 
   fileInput.addEventListener('change', (e)=>{
     const files = Array.from(e.target.files);
+    const firstIdx = tracks.length;
     files.forEach(f=>{
       const seq = idCounter++;
       const newTrack = {
@@ -1149,7 +1155,7 @@
       try{ extractCover(f, newTrack); }catch(err){ /* cover extraction failing should never block adding the song */ }
     });
     renderPlaylist();
-    if(currentTrackIndex === -1 && tracks.length > 0){ loadTrack(0, 0, appSettings.autoplay); }
+    onTracksAdded(firstIdx);
     fileInput.value = '';
   });
 
@@ -1162,7 +1168,7 @@
             if(tag.tags.artist){ track.artist = tag.tags.artist; if(currentTrack()===track) document.getElementById('trackArtist').textContent = track.artist; }
             // title tag intentionally not used — filename is kept as track name
             const pic = tag.tags.picture;
-            if(!pic) return;
+            if(!pic){ updateLibraryMeta(track); return; }
             let binary = '';
             for(let i=0; i<pic.data.length; i++){ binary += String.fromCharCode(pic.data[i]); }
             track.coverUrl = `data:${pic.format};base64,${window.btoa(binary)}`;
@@ -1196,12 +1202,6 @@
     tonearm.classList.remove('playing');
   });
 
-  // Resume position save
-  audio.addEventListener('timeupdate', ()=>{
-    if(appSettings.resume && currentTrackIndex !== -1 && audio.currentTime > 2){
-      try{ localStorage.setItem('mx-resume', JSON.stringify({ name: currentTrack().name, time: audio.currentTime })); }catch(e){}
-    }
-  });
   audio.addEventListener('timeupdate', ()=>{
     if(isSeeking) return;
     const pct = audio.duration ? (audio.currentTime/audio.duration)*100 : 0;
@@ -1315,6 +1315,8 @@
     const db = await openDB();
     const trackRecords = [];
     for(const t of tracks){
+      if(!t.url && t.libKey){ try{ const r = await libGet(t.libKey); if(r) t.url = await resolveRecUrl(normalizeRec(r), false); }catch(e){} }
+      if(!t.url) continue;
       let audioBlob = null, remoteUrl = null;
       try{ audioBlob = await blobFromUrl(t.url); }
       catch(e){ remoteUrl = t.url; }
@@ -1375,7 +1377,7 @@
     record.tracks.slice().sort((a,b)=>a.order-b.order).forEach(rec=>{
       const url = rec.audioBlob ? URL.createObjectURL(rec.audioBlob) : rec.remoteUrl;
       const coverUrl = rec.coverDataUrl ? rec.coverDataUrl : (rec.coverBlob ? URL.createObjectURL(rec.coverBlob) : (rec.remoteCoverUrl || null));
-      tracks.push({
+      const _nt = {
         id: 't' + (idCounter++),
         order: rec.order,
         name: rec.name,
@@ -1385,7 +1387,9 @@
         pendingSpeed: 1, pendingCount: 1, pendingCustomActive: false, pendingCustomValue: 2,
         coverUrl,
         skipOnce: false
-      });
+      };
+      tracks.push(_nt);
+      addToLibrary(_nt, rec.audioBlob || null);
     });
     trackTitle.textContent = 'No track loaded';
     playStatus.textContent = tracks.length ? 'Select a track' : 'Load a file to begin';
@@ -1394,7 +1398,10 @@
     renderDeckCover();
   }
 
-  // ---- Global library (every added song is remembered here) ----
+  // ---- Global library (deduped: one entry per song, with one or more sources) ----
+  let libQueue = Promise.resolve();
+  function enqueueLib(fn){ const p = libQueue.then(fn); libQueue = p.catch(()=>{}); return p; }
+
   async function libTx(mode, fn){
     const db = await openDB();
     return new Promise((resolve, reject)=>{
@@ -1409,43 +1416,233 @@
   const libPut = rec => libTx('readwrite', st => st.put(rec));
   const libDelete = key => libTx('readwrite', st => st.delete(key));
 
-  function addToLibrary(track, file){
-    const key = file ? `f|${file.name}|${file.size}` : (track.cloudKey ? 'c|'+track.cloudKey : 'u|'+track.url);
-    track.libKey = key;
-    track._libReady = (async ()=>{
-      try{
-        if(await libGet(key)) return;
-        await libPut({
-          key, name: track.name, artist: track.artist || '',
-          audioBlob: file || null, remoteUrl: file ? null : track.url,
-          cloudKey: track.cloudKey || null,
-          coverDataUrl: (track.coverUrl && track.coverUrl.startsWith('data:')) ? track.coverUrl : null,
-          addedAt: Date.now()
-        });
-      }catch(e){ /* library is best-effort */ }
-    })();
+  function sigOf(name){
+    const s = (name || '').toLowerCase()
+      .replace(/\.(mp3|m4a|aac|wav|flac|ogg|opus|wma)$/, '')
+      .replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+    return s || (name || '').toLowerCase() || 'untitled';
+  }
+  function srcId(s){
+    return s.kind === 'handle' ? 'h|' + s.folderId + '|' + s.path
+         : s.kind === 'cloud' ? 'c|' + s.cloudKey
+         : s.kind === 'url' ? 'u|' + s.url : 'b';
+  }
+  function mergeSource(rec, src){
+    const ex = rec.sources.find(x => srcId(x) === srcId(src));
+    if(ex){
+      if(ex.missing && src.kind === 'handle'){ delete ex.missing; ex.handle = src.handle; return true; }
+      return false;
+    }
+    rec.sources.push(src);
+    return true;
+  }
+  function matchRec(cands, size){
+    return (cands || []).find(r => !(r.size && size && r.size !== size));
+  }
+  function recAvailable(rec){
+    return rec.sources.some(s => !(s.kind === 'handle' && s.missing));
+  }
+  function pruneRec(rec){
+    if(!recAvailable(rec)) return false;
+    const before = rec.sources.length;
+    rec.sources = rec.sources.filter(s => !(s.kind === 'handle' && s.missing));
+    return rec.sources.length !== before;
+  }
+  function fillMeta(rec, artist, cover, size){
+    let ch = false;
+    if(!rec.artist && artist){ rec.artist = artist; ch = true; }
+    if(!rec.coverDataUrl && cover && cover.startsWith('data:')){ rec.coverDataUrl = cover; ch = true; }
+    if(!rec.size && size){ rec.size = size; ch = true; }
+    return ch;
+  }
+  // upgrades records saved by older versions (flat fields) to the sources[] format
+  function normalizeRec(r){
+    if(r.sources) return r;
+    const src = [];
+    if(r.audioBlob) src.push({ kind:'blob', blob:r.audioBlob });
+    if(r.fileHandle) src.push({ kind:'handle', handle:r.fileHandle, folderId:r.folderId, folderName:r.folderName, path:(r.key || '').split('|').slice(2).join('|') });
+    if(r.cloudKey) src.push({ kind:'cloud', cloudKey:r.cloudKey });
+    if(r.remoteUrl && !r.cloudKey) src.push({ kind:'url', url:r.remoteUrl });
+    r.sources = src;
+    r.sig = sigOf(r.name);
+    r.size = r.audioBlob ? r.audioBlob.size : null;
+    ['audioBlob','fileHandle','folderId','folderName','remoteUrl','cloudKey'].forEach(k => delete r[k]);
+    return r;
+  }
+  function idxAdd(idx, rec){
+    idx.all.push(rec);
+    const l = idx.bySig.get(rec.sig) || [];
+    l.push(rec);
+    idx.bySig.set(rec.sig, l);
+  }
+  async function libIndex(){
+    const idx = { all: [], bySig: new Map() };
+    (await libGetAll()).map(normalizeRec).forEach(r => idxAdd(idx, r));
+    return idx;
   }
 
-  async function updateLibraryMeta(track){
-    if(!track.libKey) return;
+  // Adds a song to the library, or attaches it as another source of the same song
+  function addToLibrary(track, blob){
+    track._libReady = enqueueLib(async ()=>{
+      try{
+        const sig = sigOf(track.name);
+        const size = track.size || (blob && blob.size) || null;
+        const src = blob ? { kind:'blob', blob }
+                  : track.cloudKey ? { kind:'cloud', cloudKey:track.cloudKey }
+                  : { kind:'url', url:track.url };
+        const idx = await libIndex();
+        let rec = matchRec(idx.bySig.get(sig), size);
+        if(rec){
+          const a = mergeSource(rec, src);
+          const b = fillMeta(rec, track.artist, track.coverUrl, size);
+          if(a || b) await libPut(rec);
+        } else {
+          rec = {
+            key: 's|' + sig + '|' + (size || ''), sig, name: track.name, artist: track.artist || '', size,
+            coverDataUrl: (track.coverUrl && track.coverUrl.startsWith('data:')) ? track.coverUrl : null,
+            addedAt: Date.now(), sources: [src]
+          };
+          await libPut(rec);
+        }
+        track.libKey = rec.key;
+      }catch(e){ /* library is best-effort */ }
+    });
+  }
+  function updateLibraryMeta(track){
+    if(!track._libReady) return;
+    enqueueLib(async ()=>{
+      try{
+        await track._libReady;
+        if(!track.libKey) return;
+        const r = await libGet(track.libKey);
+        if(!r) return;
+        normalizeRec(r);
+        if(fillMeta(r, track.artist, track.coverUrl, null)) await libPut(r);
+      }catch(e){}
+    });
+  }
+  function registerCloudTracks(files){
+    tracks.forEach(t=>{
+      if(t.cloudKey && !t._libReady){
+        const f = (files || []).find(x => x.key === t.cloudKey);
+        if(f) t.size = f.size;
+        addToLibrary(t, null);
+      }
+    });
+  }
+
+  // one-time merge of duplicates created by older versions
+  async function migrateLibrary(){
+    try{ if(localStorage.getItem('mx-lib-v2')) return; }catch(e){}
+    await enqueueLib(async ()=>{
+      const all = (await libGetAll()).map(normalizeRec).sort((a,b)=> (a.addedAt||0) - (b.addedAt||0));
+      const bySig = new Map(), dirty = new Set(), drop = [];
+      for(const r of all){
+        const cands = bySig.get(r.sig) || [];
+        const m = matchRec(cands, r.size);
+        if(m){
+          r.sources.forEach(x => mergeSource(m, x));
+          fillMeta(m, r.artist, r.coverDataUrl, r.size);
+          dirty.add(m); drop.push(r.key);
+        } else { cands.push(r); bySig.set(r.sig, cands); }
+      }
+      for(const k of drop) await libDelete(k);
+      for(const m of dirty) await libPut(m);
+    });
+    try{ localStorage.setItem('mx-lib-v2', '1'); }catch(e){}
+  }
+
+  async function resolveRecUrl(rec, ask){
+    const b = rec.sources.find(s => s.kind === 'blob');
+    if(b) return URL.createObjectURL(b.blob);
+    for(const s of rec.sources.filter(x => x.kind === 'handle' && !x.missing)){
+      if(await ensurePerm(s.handle, ask)){
+        try{ return URL.createObjectURL(await s.handle.getFile()); }catch(e){}
+      }
+    }
+    const c = rec.sources.find(s => s.kind === 'cloud');
+    if(c) return '/api/file/' + encodeURIComponent(c.cloudKey);
+    const u = rec.sources.find(s => s.kind === 'url');
+    return u ? u.url : null;
+  }
+
+  async function refreshUnavailable(){
     try{
-      await track._libReady;
-      const rec = await libGet(track.libKey);
-      if(!rec) return;
-      rec.artist = track.artist || '';
-      if(track.coverUrl && track.coverUrl.startsWith('data:')) rec.coverDataUrl = track.coverUrl;
-      await libPut(rec);
+      const all = (await libGetAll()).map(normalizeRec);
+      const next = new Set(all.filter(r => !recAvailable(r)).map(r => r.key));
+      const changed = next.size !== unavailKeys.size || [...next].some(k => !unavailKeys.has(k));
+      unavailKeys = next;
+      if(changed) renderPlaylist();
     }catch(e){}
   }
 
+  // ---- Settings behaviour: autoplay + resume ----
+  function onTracksAdded(firstIdx){
+    if(firstIdx < 0 || firstIdx >= tracks.length) return;
+    if(currentTrackIndex === -1){ loadTrack(firstIdx, 0, appSettings.autoplay); }
+    else if(appSettings.autoplay && audio.ended){ loadTrack(firstIdx, 0, true); }
+  }
+
+  function saveSession(){
+    if(restoring || !appSettings.resume) return;
+    try{
+      const cur = currentTrack();
+      localStorage.setItem('mx-session', JSON.stringify({
+        items: tracks.filter(t => t.libKey).map(t => ({ key:t.libKey, plays:t.plays })),
+        curKey: cur ? (cur.libKey || null) : null,
+        playIndex: currentPlayIndex,
+        time: audio.currentTime || 0
+      }));
+    }catch(e){}
+  }
+  let _lastSessSave = 0;
+  audio.addEventListener('timeupdate', ()=>{ const n = Date.now(); if(n - _lastSessSave > 3000){ _lastSessSave = n; saveSession(); } });
+  audio.addEventListener('pause', saveSession);
+  document.addEventListener('visibilitychange', ()=>{ if(document.hidden) saveSession(); });
+  window.addEventListener('pagehide', saveSession);
+
+  async function restoreSession(){
+    try{
+      if(!appSettings.resume || tracks.length) return;
+      let sess = null;
+      try{ sess = JSON.parse(localStorage.getItem('mx-session') || 'null'); }catch(e){}
+      if(!sess || !Array.isArray(sess.items) || !sess.items.length) return;
+      const byKey = new Map((await libGetAll()).map(normalizeRec).map(r => [r.key, r]));
+      sess.items.forEach(it=>{
+        const r = byKey.get(it.key);
+        if(!r) return;
+        const seq = idCounter++;
+        tracks.push({
+          id: 't'+seq, order: seq, name: r.name, artist: r.artist || '', url: null,
+          plays: (it.plays && it.plays.length) ? it.plays : [{ speed:1 }],
+          pendingSpeed:1, pendingCount:1, pendingCustomActive:false, pendingCustomValue:2,
+          coverUrl: r.coverDataUrl || null, skipOnce:false, libKey: r.key, size: r.size
+        });
+      });
+      if(!tracks.length) return;
+      renderPlaylist();
+      let idx = tracks.findIndex(t => t.libKey === sess.curKey);
+      let pi = 0;
+      if(idx === -1) idx = 0;
+      else {
+        pi = Math.min(sess.playIndex || 0, tracks[idx].plays.length - 1);
+        pendingSeek = { key: sess.curKey, playIndex: pi, time: sess.time || 0 };
+      }
+      loadTrack(idx, pi, false);
+    }catch(e){}
+    finally{ restoring = false; }
+  }
+
+  // ---- Library panel ----
   async function openLibrary(){
     let items = [];
-    try{ items = await libGetAll(); }catch(e){}
+    try{ items = (await libGetAll()).map(normalizeRec); }catch(e){}
     items.sort((a,b)=> (a.name||'').localeCompare(b.name||'', undefined, { sensitivity:'base', numeric:true }));
+    const unav = items.filter(r => !recAvailable(r)).length;
     editOverlayContainer.innerHTML = `
       <div class="edit-overlay" id="libBackdrop">
         <div class="edit-panel" style="max-width:380px;">
-          <div class="edit-panel-title">Global library · ${items.length} song${items.length===1?'':'s'}</div>
+          <div class="edit-panel-title">Global library · ${items.length} song${items.length===1?'':'s'}${unav ? ' · '+unav+' unavailable' : ''}</div>
           <input type="text" id="libSearch" placeholder="Search library…" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;color:var(--cream);font-family:'JetBrains Mono',monospace;font-size:13px;margin-bottom:10px;">
           <div style="max-height:380px;overflow-y:auto;" id="libList"></div>
           <button class="edit-panel-close" id="libClose">Close</button>
@@ -1462,53 +1659,55 @@
         listEl.innerHTML = '<div class="saved-list-empty">' + (items.length ? 'No matches.' : 'Library is empty — songs you add show up here.') + '</div>';
         return;
       }
-      listEl.innerHTML = shown.map(({r,i}) => `
+      listEl.innerHTML = shown.map(({r,i}) => {
+        const av = recAvailable(r);
+        const hs = r.sources.find(s => s.kind === 'handle');
+        const meta = r.artist || (hs ? '📁 ' + hs.folderName : r.sources.some(s => s.kind === 'blob') ? 'Local file' : r.sources.some(s => s.kind === 'cloud') ? 'Cloud' : 'Online');
+        return `
         <div class="saved-list-item">
-          <div style="min-width:0;flex:1;">
-            <div class="saved-list-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.name}</div>
-            <div class="saved-list-meta">${r.artist || (r.folderName ? '📁 '+r.folderName : r.audioBlob ? 'Local file' : (r.cloudKey ? 'Cloud' : 'Online'))}</div>
+          <div style="min-width:0;flex:1;${av ? '' : 'opacity:.55;'}">
+            <div style="display:flex;align-items:center;gap:6px;min-width:0;">
+              <div class="saved-list-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.name}</div>
+              ${av ? '' : '<span class="skip-badge">UNAVAILABLE</span>'}
+            </div>
+            <div class="saved-list-meta">${meta}</div>
           </div>
           <div style="display:flex;gap:6px;flex-shrink:0;">
-            <button class="jamendo-add-btn" data-libadd="${i}">+ Add</button>
+            <button class="jamendo-add-btn" data-libadd="${i}" ${av ? '' : 'disabled'}>+ Add</button>
             <button class="jamendo-add-btn" data-libdel="${i}" style="color:var(--red);border-color:var(--red);">✕</button>
           </div>
-        </div>`).join('');
+        </div>`;
+      }).join('');
       listEl.querySelectorAll('[data-libadd]').forEach(btn=>{
         btn.addEventListener('click', async ()=>{
           const rec = items[parseInt(btn.dataset.libadd)];
           if(!rec) return;
-          let url;
-          if(rec.fileHandle){
-            if(!(await ensurePerm(rec.fileHandle, true))){ alert('Allow access to the folder to play this song.'); return; }
-            try{ url = URL.createObjectURL(await rec.fileHandle.getFile()); }
-            catch(e){ alert('This file is no longer in the folder.'); return; }
-          } else {
-            url = rec.audioBlob ? URL.createObjectURL(rec.audioBlob) : rec.remoteUrl;
-          }
+          const url = await resolveRecUrl(rec, true);
+          if(!url){ alert('This song is unavailable right now.'); return; }
           const seq = idCounter++;
+          const first = tracks.length;
+          const cs = rec.sources.find(s => s.kind === 'cloud');
           tracks.push({
-            id: 't'+seq, order: seq, name: rec.name, artist: rec.artist || '',
-            url,
+            id: 't'+seq, order: seq, name: rec.name, artist: rec.artist || '', url,
             plays: [{ speed: 1 }],
             pendingSpeed:1, pendingCount:1, pendingCustomActive:false, pendingCustomValue:2,
             coverUrl: rec.coverDataUrl || null, skipOnce: false,
-            cloudKey: rec.cloudKey || undefined, libKey: rec.key
+            cloudKey: cs ? cs.cloudKey : undefined, libKey: rec.key, size: rec.size
           });
           renderPlaylist();
-          if(currentTrackIndex === -1) loadTrack(0, 0, appSettings.autoplay);
+          onTracksAdded(first);
           btn.textContent = 'Added ✓';
           btn.disabled = true;
         });
       });
       listEl.querySelectorAll('[data-libdel]').forEach(btn=>{
         btn.addEventListener('click', async ()=>{
-          const i = parseInt(btn.dataset.libdel);
-          const rec = items[i];
+          const rec = items[parseInt(btn.dataset.libdel)];
           if(!rec || !confirm('Remove "'+rec.name+'" from the library?')) return;
           try{ await libDelete(rec.key); }catch(e){}
-          items[i] = { name:'', key:rec.key, _gone:true };
-          items = items.filter(x => !x._gone);
+          items = items.filter(x => x !== rec);
           render();
+          refreshUnavailable();
         });
       });
     };
@@ -1575,40 +1774,71 @@
     return false;
   }
 
-  async function scanFolder(f){
-    let added = 0;
+  // Scans one folder: adds new songs (merging with existing duplicates) and flags deleted ones
+  async function scanFolder(f, idx){
+    let added = 0, ok = true;
+    const known = new Map(), found = new Set(), dirty = new Set();
+    idx.all.forEach(r => r.sources.forEach(s => { if(s.kind === 'handle' && s.folderId === f.id) known.set(srcId(s), { rec:r, src:s }); }));
     try{
       for await (const { handle, path } of walkDir(f.handle, '')){
-        const key = `d|${f.id}|${path}`;
+        const id = 'h|' + f.id + '|' + path;
+        found.add(id);
+        const k = known.get(id);
+        if(k){ if(k.src.missing){ delete k.src.missing; dirty.add(k.rec); } continue; }
         try{
-          if(await libGet(key)) continue;
           const file = await handle.getFile();
-          const tags = await readTags(file);
-          await libPut({
-            key, name: file.name.replace(/\.[^/.]+$/, ''), artist: tags.artist || '',
-            fileHandle: handle, folderId: f.id, folderName: f.name,
-            audioBlob: null, remoteUrl: null, cloudKey: null,
-            coverDataUrl: tags.cover || null, addedAt: Date.now()
-          });
-          added++;
+          const sig = sigOf(file.name);
+          const src = { kind:'handle', handle, folderId:f.id, folderName:f.name, path };
+          let rec = matchRec(idx.bySig.get(sig), file.size);
+          if(rec){
+            mergeSource(rec, src);
+            fillMeta(rec, '', null, file.size);
+            dirty.add(rec);
+          } else {
+            const tags = await readTags(file);
+            rec = {
+              key: 's|' + sig + '|' + file.size, sig, name: file.name.replace(/\.[^/.]+$/, ''), artist: tags.artist || '',
+              size: file.size, coverDataUrl: tags.cover || null, addedAt: Date.now(), sources: [src]
+            };
+            idxAdd(idx, rec);
+            dirty.add(rec);
+            added++;
+          }
         }catch(e){}
       }
-    }catch(e){}
+    }catch(e){
+      ok = false;
+      if(e && e.name === 'NotFoundError'){
+        known.forEach(({rec, src}) => { if(!src.missing){ src.missing = true; dirty.add(rec); } });
+      }
+    }
+    if(ok){
+      known.forEach(({rec, src}, id) => { if(!found.has(id) && !src.missing){ src.missing = true; dirty.add(rec); } });
+    }
+    dirty.forEach(pruneRec);
+    for(const rec of dirty){ try{ await libPut(rec); }catch(e){} }
     return added;
   }
 
+  const scanOne = f => enqueueLib(async ()=> scanFolder(f, await libIndex()));
+
   let scanning = false;
-  async function scanAllFolders(ask){
-    if(scanning || !fsSupported) return 0;
+  function scanAllFolders(ask){
+    if(scanning || !fsSupported) return Promise.resolve(0);
     scanning = true;
-    let total = 0;
-    try{
-      const fs = await foldersGetAll();
-      for(const f of fs){ if(await ensurePerm(f.handle, ask)) total += await scanFolder(f); }
-    }catch(e){}
-    scanning = false;
-    return total;
+    return enqueueLib(async ()=>{
+      let total = 0;
+      try{
+        const fs = await foldersGetAll();
+        if(!fs.length) return 0;
+        const idx = await libIndex();
+        for(const f of fs){ if(await ensurePerm(f.handle, ask)) total += await scanFolder(f, idx); }
+      }catch(e){}
+      finally{ scanning = false; }
+      return total;
+    });
   }
+  const autoScan = ()=> scanAllFolders(false).then(refreshUnavailable);
 
   async function openFolders(msg){
     let fs = [];
@@ -1647,8 +1877,9 @@
       const rec = { id: 'fo' + Date.now(), name: h.name, handle: h };
       await folderPut(rec);
       msgEl.textContent = 'Scanning…';
-      const n = await scanFolder(rec);
-      openFolders(`Added · ${n} song${n===1?'':'s'} imported to library`);
+      const n = await scanOne(rec);
+      refreshUnavailable();
+      openFolders(`Added · ${n} new song${n===1?'':'s'} in library`);
     });
 
     editOverlayContainer.querySelectorAll('[data-fscan]').forEach(btn=>{
@@ -1657,7 +1888,8 @@
         if(!f) return;
         if(!(await ensurePerm(f.handle, true))){ msgEl.textContent = 'Access not granted.'; return; }
         msgEl.textContent = 'Scanning…';
-        const n = await scanFolder(f);
+        const n = await scanOne(f);
+        refreshUnavailable();
         openFolders(`Scanned · ${n} new song${n===1?'':'s'}`);
       });
     });
@@ -1671,12 +1903,12 @@
   }
   document.getElementById('drawerFoldersBtn').addEventListener('click', ()=>{ closeDrawer(); openFolders(); });
 
-  // auto-scan: on load, when the app regains focus, and every minute
-  scanAllFolders(false);
-  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) scanAllFolders(false); });
-  setInterval(()=>{ if(!document.hidden) scanAllFolders(false); }, 60000);
+  // auto-scan: when the app regains focus and every minute (first scan runs from startup)
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) autoScan(); });
+  setInterval(()=>{ if(!document.hidden) autoScan(); }, 60000);
 
   const savePlaylistBtn = document.getElementById('savePlaylistBtn');
+
   const loadPlaylistBtn = document.getElementById('loadPlaylistBtn');
 
   // ---- Jamendo browse & import (legally free/downloadable catalog) ----
@@ -1744,7 +1976,7 @@
     });
     addToLibrary(tracks[tracks.length-1], null);
     renderPlaylist();
-    if(currentTrackIndex === -1){ loadTrack(0, 0, false); }
+    onTracksAdded(tracks.length-1);
   }
 
   let browseSource = 'jamendo';
@@ -1933,6 +2165,7 @@
         renderPlaylist(); renderDeckCover();
         trackTitle.textContent = tracks.length ? 'Select a track' : 'No track loaded';
         playStatus.textContent = tracks.length ? 'Preset loaded' : 'Load a file to begin';
+        registerCloudTracks(files);
         tracks.forEach(t => {
           if(t._rawCoverUrl){
             authedImgUrl(t._rawCoverUrl).then(blobUrl => {
@@ -2103,7 +2336,7 @@
   const _autoplayCb = document.getElementById('settingAutoplay');
   const _resumeCb = document.getElementById('settingResume');
   if(_autoplayCb){ _autoplayCb.checked = appSettings.autoplay; _autoplayCb.addEventListener('change', e=>{ appSettings.autoplay = e.target.checked; saveSettings(); }); }
-  if(_resumeCb){ _resumeCb.checked = appSettings.resume; _resumeCb.addEventListener('change', e=>{ appSettings.resume = e.target.checked; saveSettings(); }); }
+  if(_resumeCb){ _resumeCb.checked = appSettings.resume; _resumeCb.addEventListener('change', e=>{ appSettings.resume = e.target.checked; saveSettings(); if(appSettings.resume) saveSession(); }); }
 
   document.getElementById('drawerSettingsBtn').addEventListener('click', ()=>{
     settingsPanel.classList.add('open');
@@ -2457,7 +2690,7 @@
               <div class="saved-list-meta">${(f.size/1024/1024).toFixed(1)} MB</div>
             </div>
             <div style="display:flex;gap:6px;flex-shrink:0;">
-              <button class="jamendo-add-btn cloud-add-btn" data-cloudkey="${encodeURIComponent(f.key)}" data-cloudname="${displayName}">+ Add</button>
+              <button class="jamendo-add-btn cloud-add-btn" data-cloudkey="${encodeURIComponent(f.key)}" data-cloudname="${displayName}" data-cloudsize="${f.size}">+ Add</button>
               <button class="jamendo-add-btn cloud-del-btn" data-cloudkey="${encodeURIComponent(f.key)}" style="color:var(--red);border-color:var(--red);">✕</button>
             </div>
           </div>`;
@@ -2521,12 +2754,13 @@
             id: 't' + seq, order: seq, name, artist: '', url,
             plays: [{speed:1}],
             pendingSpeed:1, pendingCount:1, pendingCustomActive:false, pendingCustomValue:2,
-            coverUrl: null, skipOnce: false, cloudKey: key
+            coverUrl: null, skipOnce: false, cloudKey: key,
+            size: parseInt(btn.dataset.cloudsize) || null
           };
           tracks.push(newCloudTrack);
           addToLibrary(newCloudTrack, null);
           renderPlaylist();
-          if(currentTrackIndex === -1) loadTrack(0, 0, false);
+          onTracksAdded(tracks.length-1);
           btn.textContent = 'Added ✓';
           btn.disabled = true;
           if(rawCoverUrl){
@@ -2625,6 +2859,7 @@
           renderDeckCover();
           trackTitle.textContent = tracks.length ? 'Select a track' : 'No track loaded';
           playStatus.textContent = tracks.length ? 'Preset loaded' : 'Load a file to begin';
+        registerCloudTracks(files);
           // Resolve cloud cover URLs
           tracks.forEach(t => {
             if(t._rawCoverUrl){
@@ -2650,6 +2885,12 @@
       alert('Error: ' + e.message);
     }
   });
+
+  (async function startup(){
+    try{ await migrateLibrary(); }catch(e){}
+    await restoreSession();
+    autoScan();
+  })();
 
 </script>
 </body>
