@@ -612,7 +612,7 @@
 </div>
 
 <div class="app">
-  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.54</span></h1>
+  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.55</span></h1>
 
   <div class="deck">
     <div class="style-toggle">
@@ -1392,6 +1392,7 @@
     seek.value = 0; curTime.textContent = '0:00'; durTime.textContent = '0:00';
     renderPlaylist();
     renderDeckCover();
+    if(appSettings.autoplay && tracks.length) loadTrack(0, 0, true);
   }
 
   // ---- Global library (deduped: one entry per song, with one or more sources) ----
@@ -2184,6 +2185,7 @@
         trackTitle.textContent = tracks.length ? 'Select a track' : 'No track loaded';
         playStatus.textContent = tracks.length ? 'Preset loaded' : 'Load a file to begin';
         registerCloudTracks(files);
+        if(appSettings.autoplay && tracks.length) loadTrack(0, 0, true);
         tracks.forEach(t => {
           if(t._rawCoverUrl){
             authedImgUrl(t._rawCoverUrl).then(blobUrl => {
@@ -2878,6 +2880,7 @@
           trackTitle.textContent = tracks.length ? 'Select a track' : 'No track loaded';
           playStatus.textContent = tracks.length ? 'Preset loaded' : 'Load a file to begin';
         registerCloudTracks(files);
+        if(appSettings.autoplay && tracks.length) loadTrack(0, 0, true);
           // Resolve cloud cover URLs
           tracks.forEach(t => {
             if(t._rawCoverUrl){
