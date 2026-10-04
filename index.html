@@ -45,6 +45,7 @@
   .deck{
     background:var(--panel); border:1px solid var(--line); border-radius:18px;
     padding:20px; position:relative; overflow:hidden; margin-bottom:22px;
+    display:flex; flex-wrap:wrap; column-gap:8px; align-content:flex-start;
   }
   .deck::before{
     content:''; position:absolute; top:0; left:0; right:0; height:4px;
@@ -99,6 +100,7 @@
     padding:8px 12px; border-radius:20px; cursor:pointer;
   }
   .speed-chip:active{ background:var(--line); }
+  .speed-chip.sel{ background:var(--amber); border-color:var(--amber); color:var(--bg); font-weight:700; }
   .speed-chip.disabled{ opacity:0.35; pointer-events:none; }
 
   .load-zone{ margin-top:16px; }
@@ -501,6 +503,31 @@
   }
   .theme-reset-btn:active{ background:var(--panel2); }
 
+  /* ---- Editable layout blocks ---- */
+  .blk-hidden{ display:none; }
+  .deck.editing .blk{ outline:1px dashed var(--line); border-radius:10px; padding:6px; margin-bottom:10px; }
+  .deck.editing .blk.blk-hidden{ display:block; opacity:.45; }
+  .deck.editing .blk > :not(.blk-ctl){ pointer-events:none; }
+  .blk[data-blk="add"]{ margin-top:16px; }
+  .blk-ctl{ display:flex; align-items:center; gap:6px; margin-bottom:6px; font-family:'JetBrains Mono', monospace; font-size:11px; color:var(--teal); }
+  .blk-ctl span{ flex:1; }
+  .blk-ctl button{ background:var(--panel2); border:1px solid var(--line); color:var(--cream); border-radius:6px; padding:4px 10px; font-size:12px; cursor:pointer; font-family:inherit; }
+  .blk-ctl button:disabled{ opacity:.3; }
+  #layoutBar{ position:fixed; left:0; right:0; bottom:0; z-index:150; background:var(--panel); border-top:1px solid var(--line); padding:12px 16px; display:none; align-items:center; justify-content:space-between; gap:10px; font-family:'JetBrains Mono', monospace; font-size:12px; color:var(--muted); }
+  #layoutBar.on{ display:flex; }
+  #layoutBar button{ font-family:inherit; font-size:12px; border-radius:8px; padding:8px 14px; cursor:pointer; background:transparent; border:1px solid var(--line); color:var(--cream); }
+  #layoutBar .lb-done{ background:var(--amber); border-color:var(--amber); color:var(--bg); font-weight:700; }
+
+  /* flow layout: full blocks take a row, half buttons pair up (a lone one grows to full width) */
+  .deck > .blk{ flex:0 0 100%; min-width:0; }
+  .deck > .blk.btn{ margin-top:8px; }
+  .deck > .blk.btn.half{ flex:1 1 calc(50% - 4px); }
+  .deck > .blk[data-blk="add"]{ margin-top:14px; }
+  .blk > .playlist-io-btn{ width:100%; }
+  .blk-ctl{ flex-wrap:wrap; row-gap:4px; }
+  .blk.half .blk-ctl span{ flex:1 0 100%; }
+  .blk-ctl button{ padding:4px 8px; }
+
   #authOverlay{ position:fixed; inset:0; background:var(--bg); z-index:9999; display:flex; align-items:center; justify-content:center; padding:20px; }
   #authOverlay.hidden{ display:none; }
   .auth-card{ background:var(--panel); border:1px solid var(--line); border-radius:18px; padding:28px 24px; width:100%; max-width:360px; }
@@ -540,6 +567,9 @@
     </button>
     <button class="drawer-item" id="drawerThemeBtn">
       <span class="drawer-item-icon">🎨</span> Theme
+    </button>
+    <button class="drawer-item" id="drawerLayoutBtn">
+      <span class="drawer-item-icon">🧩</span> Edit layout
     </button>
   </nav>
   <div class="drawer-footer">
@@ -612,7 +642,7 @@
 </div>
 
 <div class="app">
-  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.55</span></h1>
+  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.59</span></h1>
 
   <div class="deck">
     <div class="style-toggle">
@@ -669,6 +699,14 @@
     </div>
 
     <div class="repeat-live">
+      <div class="repeat-live-label">Speed now:</div>
+      <div class="speed-row" id="nowSpeedRow" style="margin-bottom:16px;">
+        <div class="speed-chip" data-speed="0.75">0.75×</div>
+        <div class="speed-chip" data-speed="1">1×</div>
+        <div class="speed-chip" data-speed="1.25">1.25×</div>
+        <div class="speed-chip" data-speed="1.5">1.5×</div>
+        <div class="speed-chip" data-speed="2">2×</div>
+      </div>
       <div class="repeat-live-label">Repeat this song, next play at:</div>
       <div class="speed-row" id="liveSpeedRow">
         <div class="speed-chip" data-speed="0.75">0.75×</div>
@@ -736,6 +774,14 @@
   </div>
 </div>
 <div id="editOverlayContainer"></div>
+
+<div id="layoutBar">
+  <span>Editing layout</span>
+  <div style="display:flex;gap:8px;">
+    <button id="layoutReset">Reset</button>
+    <button class="lb-done" id="layoutDone">Done</button>
+  </div>
+</div>
 
 <audio id="audio"></audio>
 
@@ -1116,7 +1162,25 @@
   try{ savedStyle = localStorage.getItem('mixtape-deck-style') || 'cassette'; }catch(e){ /* default to cassette */ }
   setDeckStyle(savedStyle);
 
+  function updateNowSpeed(){
+    const t = currentTrack();
+    const sp = (t && t.plays[currentPlayIndex]) ? t.plays[currentPlayIndex].speed : null;
+    document.querySelectorAll('#nowSpeedRow .speed-chip').forEach(c => c.classList.toggle('sel', parseFloat(c.dataset.speed) === sp));
+  }
+  document.querySelectorAll('#nowSpeedRow .speed-chip').forEach(chip=>{
+    chip.addEventListener('click', ()=>{
+      const t = currentTrack();
+      if(!t || !t.plays[currentPlayIndex]) return;
+      const speed = parseFloat(chip.dataset.speed);
+      t.plays[currentPlayIndex].speed = speed;
+      audio.playbackRate = speed;
+      renderPlaylist();
+      updateStatus();
+    });
+  });
+
   function updateStatus(){
+    updateNowSpeed();
     const t = currentTrack();
     if(!t){ playStatus.textContent = 'Load a file to begin'; return; }
     const total = t.plays.length;
@@ -2906,6 +2970,170 @@
       alert('Error: ' + e.message);
     }
   });
+
+  // ---- Editable layout (move / hide / resize blocks) ----
+  const deckEl = document.querySelector('.deck');
+  const LAYOUT_DEFAULT = ['style','visual','title','seek','controls','speed','repeat','add','save','load','browse','upload','cloudfiles','library'];
+  const BTN_DEFAULT_SIZE = { add:'full', save:'half', load:'half', browse:'full', upload:'half', cloudfiles:'half', library:'full' };
+  const LAYOUT_NAMES = {
+    style:'Deck style', visual:'Cover / deck', title:'Title', seek:'Seek bar', controls:'Play controls',
+    speed:'Speed now', repeat:'Repeat song', add:'Add tracks', save:'Save playlist', load:'Load playlist',
+    browse:'Browse free music', upload:'Upload to cloud', cloudfiles:'My cloud files', library:'Global library'
+  };
+
+  (function buildBlocks(){
+    const byId = id => document.getElementById(id);
+    const rl = deckEl.querySelector('.repeat-live');
+    const labels = rl ? rl.querySelectorAll('.repeat-live-label') : [];
+    byId('nowSpeedRow').style.marginBottom = '0';
+    const wrap = (id, els, cls)=>{
+      els = els.filter(Boolean);
+      if(!els.length) return;
+      const w = document.createElement('div');
+      w.className = 'blk' + (cls ? ' ' + cls : '');
+      w.dataset.blk = id;
+      els.forEach(e => w.appendChild(e));
+      deckEl.appendChild(w);
+    };
+    wrap('style', [deckEl.querySelector(':scope > .style-toggle')]);
+    wrap('visual', [byId('cassetteVisual'), byId('turntableVisual'), byId('coverInput')]);
+    wrap('title', [byId('trackTitle'), byId('trackArtist'), byId('playStatus')]);
+    wrap('seek', [deckEl.querySelector(':scope > .seek-row')]);
+    wrap('controls', [deckEl.querySelector(':scope > .controls')]);
+    wrap('speed', [labels[0], byId('nowSpeedRow')], 'repeat-live');
+    wrap('repeat', [labels[1], byId('liveSpeedRow')], 'repeat-live');
+    wrap('add', [deckEl.querySelector('label.load-btn[for="fileInput"]'), byId('fileInput')], 'btn');
+    wrap('save', [byId('savePlaylistBtn')], 'btn');
+    wrap('load', [byId('loadPlaylistBtn')], 'btn');
+    wrap('browse', [byId('browseJamendoBtn')], 'btn');
+    wrap('upload', [byId('cloudUploadBtn')], 'btn');
+    wrap('cloudfiles', [byId('cloudFilesBtn')], 'btn');
+    wrap('library', [byId('libraryBtn')], 'btn');
+    if(rl) rl.remove();
+    deckEl.querySelectorAll('.playlist-io-row').forEach(r => r.remove());
+    const lz = deckEl.querySelector('.load-zone'); if(lz) lz.remove();
+  })();
+
+  let layout = { order: LAYOUT_DEFAULT.slice(), hidden: [], size: {} };
+  try{
+    const sv = JSON.parse(localStorage.getItem('mx-layout') || 'null');
+    if(sv && Array.isArray(sv.order)){
+      const mapIds = arr => (arr || []).flatMap(id => id === 'saveload' ? ['save','load'] : id === 'cloud' ? ['upload','cloudfiles'] : [id]);
+      layout = { order: mapIds(sv.order), hidden: mapIds(sv.hidden), size: (sv.size && typeof sv.size === 'object') ? sv.size : {} };
+    }
+  }catch(e){}
+  let editingLayout = false;
+
+  function normLayout(){
+    layout.order = layout.order.filter((id, i, a) => LAYOUT_DEFAULT.includes(id) && a.indexOf(id) === i);
+    LAYOUT_DEFAULT.forEach(id => { if(!layout.order.includes(id)) layout.order.push(id); });
+    layout.hidden = layout.hidden.filter(id => LAYOUT_DEFAULT.includes(id) && id !== 'controls');
+    Object.keys(layout.size).forEach(id => { if(!(id in BTN_DEFAULT_SIZE) || !['half','full'].includes(layout.size[id])) delete layout.size[id]; });
+  }
+  function saveLayout(){ try{ localStorage.setItem('mx-layout', JSON.stringify(layout)); }catch(e){} }
+  function sizeOf(id){ return (id in BTN_DEFAULT_SIZE) ? (layout.size[id] || BTN_DEFAULT_SIZE[id]) : 'full'; }
+
+  // Mirrors how the flex-wrap layout flows: half buttons pair up two per row, everything else is its own row
+  function computeRows(){
+    const rows = [];
+    layout.order.forEach(id=>{
+      if(sizeOf(id) === 'half'){
+        const last = rows[rows.length - 1];
+        if(last && last.half && last.ids.length < 2){ last.ids.push(id); return; }
+        rows.push({ half:true, ids:[id] });
+      } else rows.push({ half:false, ids:[id] });
+    });
+    return rows;
+  }
+
+  function moveBlock(id, dir){
+    const rows = computeRows();
+    const r = rows.findIndex(x => x.ids.includes(id));
+    const row = rows[r];
+    const order = layout.order;
+    if(dir === 'left' || dir === 'right'){
+      const other = row.ids[row.ids.indexOf(id) + (dir === 'left' ? -1 : 1)];
+      if(!other) return;
+      const a = order.indexOf(id), b = order.indexOf(other);
+      [order[a], order[b]] = [order[b], order[a]];
+      return;
+    }
+    const tr = dir === 'up' ? r - 1 : r + 1;
+    if(tr < 0 || tr >= rows.length) return;
+    const target = rows[tr];
+    order.splice(order.indexOf(id), 1);
+    if(dir === 'up') order.splice(order.indexOf(target.ids[0]), 0, id);
+    else order.splice(order.indexOf(target.ids[target.ids.length - 1]) + 1, 0, id);
+  }
+
+  function applyLayout(focusId){
+    normLayout();
+    layout.order.forEach(id => {
+      const el = deckEl.querySelector(`.blk[data-blk="${id}"]`);
+      if(el) deckEl.appendChild(el);
+    });
+    deckEl.classList.toggle('editing', editingLayout);
+    const rows = editingLayout ? computeRows() : null;
+    deckEl.querySelectorAll('.blk').forEach(el=>{
+      const id = el.dataset.blk;
+      const hid = layout.hidden.includes(id);
+      el.classList.toggle('blk-hidden', hid);
+      el.classList.toggle('half', sizeOf(id) === 'half');
+      const old = el.querySelector(':scope > .blk-ctl');
+      if(old) old.remove();
+      if(!editingLayout) return;
+      const r = rows.findIndex(x => x.ids.includes(id));
+      const row = rows[r];
+      const pos = row.ids.indexOf(id);
+      const isBtn = id in BTN_DEFAULT_SIZE;
+      const b = (a, t, dis) => `<button data-a="${a}" ${dis ? 'disabled' : ''}>${t}</button>`;
+      let h = `<span>${LAYOUT_NAMES[id]}${hid ? ' (hidden)' : ''}</span>`;
+      if(isBtn) h += b('left', '◀', pos === 0) + b('right', '▶', pos === row.ids.length - 1);
+      h += b('up', '▲', r === 0) + b('down', '▼', r === rows.length - 1);
+      if(isBtn) h += b('size', sizeOf(id) === 'half' ? '½' : 'Full', false);
+      if(id !== 'controls') h += b('vis', hid ? 'Show' : '✕', false);
+      const ctl = document.createElement('div');
+      ctl.className = 'blk-ctl';
+      ctl.innerHTML = h;
+      ctl.addEventListener('click', e=>{
+        const btn = e.target.closest('button');
+        if(!btn || btn.disabled) return;
+        e.stopPropagation();
+        const a = btn.dataset.a;
+        if(a === 'size') layout.size[id] = sizeOf(id) === 'half' ? 'full' : 'half';
+        else if(a === 'vis') layout.hidden = hid ? layout.hidden.filter(x => x !== id) : layout.hidden.concat(id);
+        else moveBlock(id, a);
+        saveLayout();
+        applyLayout(id);
+      });
+      el.insertBefore(ctl, el.firstChild);
+    });
+    if(focusId){
+      const f = deckEl.querySelector(`.blk[data-blk="${focusId}"]`);
+      if(f) f.scrollIntoView({ block:'nearest' });
+    }
+  }
+
+  function enterLayoutEdit(){
+    editingLayout = true;
+    document.getElementById('layoutBar').classList.add('on');
+    applyLayout();
+    window.scrollTo({ top:0 });
+  }
+  function exitLayoutEdit(){
+    editingLayout = false;
+    document.getElementById('layoutBar').classList.remove('on');
+    applyLayout();
+  }
+  document.getElementById('drawerLayoutBtn').addEventListener('click', ()=>{ closeDrawer(); enterLayoutEdit(); });
+  document.getElementById('layoutDone').addEventListener('click', exitLayoutEdit);
+  document.getElementById('layoutReset').addEventListener('click', ()=>{
+    if(!confirm('Reset the layout to default?')) return;
+    layout = { order: LAYOUT_DEFAULT.slice(), hidden: [], size: {} };
+    saveLayout();
+    applyLayout();
+  });
+  applyLayout();
 
   (async function startup(){
     try{ await migrateLibrary(); }catch(e){}
