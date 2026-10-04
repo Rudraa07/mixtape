@@ -612,7 +612,7 @@
 </div>
 
 <div class="app">
-  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.52</span></h1>
+  <h1>Mixtape <span id="appVersion" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:400;color:var(--muted);letter-spacing:1px;">v1.0.54</span></h1>
 
   <div class="deck">
     <div class="style-toggle">
@@ -1052,16 +1052,12 @@
     renderPlaylist();
     renderDeckCover();
     if(autoplay){
-      let played = false;
-      const playWhenReady = () => {
-        if(played) return;
-        played = true;
-        audio.removeEventListener('canplay', playWhenReady);
-        audio.play().catch(()=>{});
-      };
-      audio.addEventListener('canplay', playWhenReady);
-      // Fallback: if canplay doesn't fire in 1.5s, try anyway
-      setTimeout(() => { if(!played){ played=true; audio.play().catch(()=>{}); } }, 1500);
+      // call play() right away (keeps the user-gesture), retry once when ready if the browser wasn't ready yet
+      const pr = audio.play();
+      if(pr && pr.catch) pr.catch(err=>{
+        if(err && err.name === 'AbortError') return;
+        audio.addEventListener('canplay', ()=>{ audio.play().catch(()=>{}); }, { once: true });
+      });
     }
   }
 
@@ -1580,7 +1576,7 @@
   function onTracksAdded(firstIdx){
     if(firstIdx < 0 || firstIdx >= tracks.length) return;
     if(currentTrackIndex === -1){ loadTrack(firstIdx, 0, appSettings.autoplay); }
-    else if(appSettings.autoplay && audio.ended){ loadTrack(firstIdx, 0, true); }
+    else if(appSettings.autoplay && audio.paused){ loadTrack(firstIdx, 0, true); }
   }
 
   function saveSession(){
@@ -1601,6 +1597,24 @@
   document.addEventListener('visibilitychange', ()=>{ if(document.hidden) saveSession(); });
   window.addEventListener('pagehide', saveSession);
 
+  function askContinue(name, time){
+    return new Promise(resolve=>{
+      editOverlayContainer.innerHTML = `
+        <div class="edit-overlay">
+          <div class="edit-panel">
+            <div class="edit-panel-title">Continue from last time?</div>
+            ${name ? `<div style="text-align:center;font-weight:700;font-size:15px;margin-bottom:4px;">${name}</div>
+            <div class="saved-list-meta" style="text-align:center;margin-bottom:14px;">at ${fmtTime(time)}</div>` : ''}
+            <button class="add-repeat-btn" id="contYes">▶ Yes, continue</button>
+            <button class="edit-panel-close" id="contNo">No, start fresh</button>
+          </div>
+        </div>`;
+      const done = v => { editOverlayContainer.innerHTML = ''; resolve(v); };
+      document.getElementById('contYes').addEventListener('click', ()=> done(true));
+      document.getElementById('contNo').addEventListener('click', ()=> done(false));
+    });
+  }
+
   async function restoreSession(){
     try{
       if(!appSettings.resume || tracks.length) return;
@@ -1608,6 +1622,10 @@
       try{ sess = JSON.parse(localStorage.getItem('mx-session') || 'null'); }catch(e){}
       if(!sess || !Array.isArray(sess.items) || !sess.items.length) return;
       const byKey = new Map((await libGetAll()).map(normalizeRec).map(r => [r.key, r]));
+      if(!sess.items.some(it => byKey.has(it.key))) return;
+      const curRec = byKey.get(sess.curKey);
+      const yes = await askContinue(curRec ? curRec.name : '', sess.time || 0);
+      if(!yes){ try{ localStorage.removeItem('mx-session'); }catch(e){} return; }
       sess.items.forEach(it=>{
         const r = byKey.get(it.key);
         if(!r) return;
@@ -1628,7 +1646,7 @@
         pi = Math.min(sess.playIndex || 0, tracks[idx].plays.length - 1);
         pendingSeek = { key: sess.curKey, playIndex: pi, time: sess.time || 0 };
       }
-      loadTrack(idx, pi, false);
+      loadTrack(idx, pi, true);
     }catch(e){}
     finally{ restoring = false; }
   }
